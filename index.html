@@ -133,6 +133,18 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .linkbtn { background: none; border: 0; padding: 0; color: var(--trainer); font-weight: 600; cursor: pointer; text-decoration: underline; }
 .noimg small { opacity: .8; }
 .noimg.big { display: grid; place-items: center; aspect-ratio: 63 / 88; background: var(--pocket); color: #fff; border-radius: 12px; padding: 12px; text-align: center; font-weight: 600; }
+.sugg.show { border-left-color: var(--trainer); }
+.sugg-status { font-size: 12px; font-weight: 600; color: var(--muted); }
+.sugg-status.ok { color: var(--have); }
+.remember { margin-top: 10px; padding: 10px 12px; border-radius: var(--r-md); background: #FFF6DB; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.divider { border: 0; border-top: 1px solid var(--line); margin: 18px 0 8px; }
+.settings textarea { font-size: 14px; }
+.sugg-group { margin: 6px 0 -2px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.sources { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin-top: 8px; font-size: 13px; }
+.sources a { color: var(--trainer); }
+.search-chips { margin-top: 6px; max-width: 100%; overflow-x: auto; }
+.composer { flex-wrap: wrap; }
+.webtoggle { order: 3; width: 100%; font-size: 13px; color: var(--muted); }
 .chat-note { text-align: center; font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
 .thinking { color: var(--muted); font-style: italic; }
 .suggest { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -184,12 +196,15 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.3.1';
+const VERSION = '1.5.0';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
 const COACH_READY = FIREBASE_READY && filled(cfg.recaptchaSiteKey);
-const GEMINI_MODEL = filled(cfg.geminiModel) ? cfg.geminiModel.trim() : 'gemini-3.8-flash';
+const GEMINI_MODEL = filled(cfg.geminiModel) ? cfg.geminiModel.trim() : 'gemini-3.5-flash-lite';
+// If a model is out of free requests (or retired), the coach moves down this list.
+// Flash-Lite models have a much bigger free allowance (about 500 a day) than standard Flash (about 20).
+const COACH_MODELS = [...new Set([GEMINI_MODEL, 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'])];
 
 /* ---------- Per-device settings ---------- */
 const load = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
@@ -417,10 +432,10 @@ const collectionText = (coll) => Object.values(coll).sort((a, b) => a.card.name.
 /* ---------- Storage: Firebase (shared) or this device only ---------- */
 const cleanForSave = (v) => JSON.parse(JSON.stringify(v)); // Firestore can't store undefined
 function createLocalStore() {
-  let decks = load('db.local.decks', {}), coll = load('db.local.collection', {}), custom = load('db.local.custom', {});
+  let decks = load('db.local.decks', {}), coll = load('db.local.collection', {}), custom = load('db.local.custom', {}), notes = load('db.local.notes', '');
   const subs = [];
-  const snapshot = () => ({ decks: { ...decks }, collection: { ...coll }, customCards: { ...custom }, loaded: true });
-  const emit = () => { save('db.local.decks', decks); save('db.local.collection', coll); save('db.local.custom', custom); subs.forEach((f) => f(snapshot())); };
+  const snapshot = () => ({ decks: { ...decks }, collection: { ...coll }, customCards: { ...custom }, coachNotes: notes, loaded: true });
+  const emit = () => { save('db.local.decks', decks); save('db.local.collection', coll); save('db.local.custom', custom); save('db.local.notes', notes); subs.forEach((f) => f(snapshot())); };
   return {
     mode: 'local',
     subscribe(f) { subs.push(f); f(snapshot()); return () => {}; },
@@ -428,6 +443,7 @@ function createLocalStore() {
     saveChat: async (deckId, messages) => save('db.local.chat.' + deckId, cleanForSave(messages)),
     deleteChat: async (deckId) => { try { localStorage.removeItem('db.local.chat.' + deckId); } catch {} },
     saveCustomCard(card) { custom[card.id] = cleanForSave(card); emit(); },
+    saveCoachNotes: async (text) => { notes = String(text || '').slice(0, NOTES_LIMIT); emit(); },
     deleteCustomCard(id) { delete custom[id]; emit(); },
     saveDeck(d) { decks[d.id] = d; emit(); },
     deleteDeck(id) { delete decks[id]; emit(); },
@@ -460,6 +476,7 @@ async function createFirebaseStore(code) {
   const collCol = fs.collection(db, 'deckbrewer', code, 'collection');
   const chatCol = fs.collection(db, 'deckbrewer', code, 'chats');
   const customCol = fs.collection(db, 'deckbrewer', code, 'customCards');
+  const notesDoc = fs.doc(db, 'deckbrewer', code, 'settings', 'coach');
   try { await fs.getDocs(fs.query(decksCol, fs.limit(1))); }
   catch (e) {
     if (e.code === 'permission-denied') throw new Error('That family code didn’t match. Check it against the code in your Firebase rules.');
@@ -475,18 +492,20 @@ async function createFirebaseStore(code) {
   return {
     mode: 'firebase',
     subscribe(f, onError) {
-      let state = { decks: {}, collection: {}, customCards: {}, loaded: false }, gotDecks = false, gotColl = false;
+      let state = { decks: {}, collection: {}, customCards: {}, coachNotes: '', loaded: false }, gotDecks = false, gotColl = false;
       const push = () => f({ ...state, loaded: gotDecks && gotColl });
       const err = () => onError?.('Lost the connection to Firebase. Changes will sync when it’s back.');
       const u1 = fs.onSnapshot(decksCol, (s) => { const d = {}; s.forEach((x) => (d[x.id] = x.data())); state = { ...state, decks: d }; gotDecks = true; push(); }, err);
       const u2 = fs.onSnapshot(collCol, (s) => { const c = {}; s.forEach((x) => (c[x.id] = x.data())); state = { ...state, collection: c }; gotColl = true; push(); }, err);
       const u3 = fs.onSnapshot(customCol, (s) => { const c = {}; s.forEach((x) => (c[x.id] = x.data())); state = { ...state, customCards: c }; push(); }, () => {});
-      return () => { u1(); u2(); u3(); };
+      const u4 = fs.onSnapshot(notesDoc, (d) => { state = { ...state, coachNotes: d.exists() ? d.data().notes || '' : '' }; push(); }, () => {});
+      return () => { u1(); u2(); u3(); u4(); };
     },
     async loadChat(deckId) { const d = await fs.getDoc(fs.doc(chatCol, deckId)); return d.exists() ? d.data().messages || [] : []; },
     saveChat: (deckId, messages) => fs.setDoc(fs.doc(chatCol, deckId), { messages: cleanForSave(messages), updatedAt: Date.now() }),
     deleteChat: (deckId) => fs.deleteDoc(fs.doc(chatCol, deckId)),
     saveCustomCard: (card) => fs.setDoc(fs.doc(customCol, card.id), cleanForSave(card)),
+    saveCoachNotes: (text) => fs.setDoc(notesDoc, { notes: String(text || '').slice(0, NOTES_LIMIT), updatedAt: Date.now() }),
     deleteCustomCard: (id) => fs.deleteDoc(fs.doc(customCol, id)),
     saveDeck: (d) => fs.setDoc(fs.doc(decksCol, d.id), d),
     deleteDeck: (id) => fs.deleteDoc(fs.doc(decksCol, id)),
@@ -509,19 +528,36 @@ const RULES_TEXT = `Deck rules: exactly 60 cards, at most 4 copies of any card b
 const SYSTEM = `You are a friendly, expert Pokémon TCG deck-building coach helping a parent and their kid build 60-card decks.
 
 How you help:
-- Work from the current deck and the cards they own (both given in each message). Prefer cards they already own; when you suggest something they don't own, say so plainly.
+- Work from the current deck and the cards in their app collection (both given in each message).
+- Suggest a mix: the best options from cards in their collection AND good cards they don't have in the app yet, including full evolution lines (for example 3 Charmander, 1 Charmeleon, 2 Charizard ex), so they know what to look for in their binders or pick up later. Their app collection may be incomplete, so say "not in your app collection" rather than "you don't own".
+- Use "group" in suggestions to organize them, for example "From your collection", "Charizard ex line", or "Worth picking up".
 - When they paste or mention a list from Limitless or another site, compare it with their collection, point out what's missing, and suggest realistic substitutes from what they own, explaining the trade-off.
 - Respect the rules. ${RULES_TEXT} Use the format given in the message.
 - Explain the "why" simply enough for a kid to follow: what the deck is trying to do, how the pieces fit together, and how a change affects consistency.
-- Never invent cards. If you aren't sure a card exists or what its set code is, leave setCode and number empty and say you're unsure. Newer cards may be beyond what you know; if a card in their deck or collection is unfamiliar, reason from its name and ask about its text rather than guessing.
+- When web search is available, look up current decklists for this deck's archetype on limitlesstcg.com (and other reliable Pokémon TCG sites) and use them to guide your suggestions; say where the idea came from, e.g. "Most Charizard ex lists on Limitless play 4 Arven." If they paste a link, read that page.
+- Never invent cards. If you aren't sure a card exists or what its set code is, leave setCode and number empty and say you're unsure. Newer cards may be beyond what you know; if a card is unfamiliar, reason from its name and ask about its text rather than guessing.
 
-Answer as JSON matching the schema. Keep "reply" conversational and short (usually under 200 words): short paragraphs, and "- " lines for lists. Put every concrete card change in "suggestions" using Pokémon TCG Live set codes (e.g. TWM, SFA, PAF) and collector numbers. Use an empty list when there's nothing to change.`;
+Card pictures (important):
+- The app shows every card in "suggestions" as a picture with an Add or Remove button. That is the only way the family sees card pictures, so EVERY specific card you recommend adding or removing must be in "suggestions", even if you also mention it in "reply". Never say you can't show pictures.
+- Write card names in **bold** in "reply".
+
+Don't repeat yourself:
+- Earlier answers in the chat end with a note in square brackets listing what you suggested and what the family did: "added", "removed", "passed" (they said no thanks), or "no action yet".
+- Don't suggest a card again if it was added or passed, unless they ask about it or something changed. For passed cards, offer different options instead.
+- Cards already in the current deck don't need to be suggested again; suggest adding more copies only when that's the point.
+
+Coach notes and memory:
+- "Coach notes" in each message are lasting family preferences. Follow them in every answer.
+- If the family states a new lasting preference (age or reading level, play style, favorite types or Pokémon, budget, house rules, cards they won't use), put one short sentence in "remember", written as a note, e.g. "He loves Fire-type Pokémon." Leave "remember" empty otherwise, and never repeat something already in the notes.
+- "Our other decks" lists their other decks. You can mention them when helpful (for example, a card already used in another deck).
+
+Always answer with only a JSON object: {"reply": string, "suggestions": [{"action": "add" | "remove", "name": string, "setCode": string, "number": string, "count": number, "reason": string, "group": string}], "remember": string}. Keep "reply" conversational and short (usually under 200 words): short paragraphs, and "- " lines for lists. Use Pokémon TCG Live set codes (e.g. TWM, SFA, PAF) and collector numbers in "suggestions". Use an empty list only when you're not recommending any specific cards.`;
 
 // Two versions of the coach model: one with light "thinking" (faster, leaves room for the answer),
 // and a plain one in case the configured model doesn't accept thinking settings.
 const modelPromises = {};
-function getCoachModel(light = true) {
-  const key = light ? 'light' : 'plain';
+function getCoachModel(light = true, modelName = GEMINI_MODEL, web = false) {
+  const key = `${modelName}|${light ? 'light' : 'plain'}|${web ? 'web' : 'local'}`;
   modelPromises[key] ||= (async () => {
     const app = await getFirebaseApp();
     const { getAI, getGenerativeModel, GoogleAIBackend, Schema, ThinkingLevel } = await import(FB + 'firebase-ai.js');
@@ -530,28 +566,54 @@ function getCoachModel(light = true) {
       suggestions: Schema.array({ items: Schema.object({
         properties: {
           action: Schema.enumString({ enum: ['add', 'remove'] }), name: Schema.string(),
-          setCode: Schema.string(), number: Schema.string(), count: Schema.integer(), reason: Schema.string(),
+          setCode: Schema.string(), number: Schema.string(), count: Schema.integer(), reason: Schema.string(), group: Schema.string(),
         },
-        optionalProperties: ['setCode', 'number'],
+        optionalProperties: ['setCode', 'number', 'group'],
       }) }),
-    } });
-    const generationConfig = { responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 16384 };
+      remember: Schema.string(),
+    }, optionalProperties: ['remember'] });
+    // Web mode can't use a strict response schema alongside search tools, so it relies on the JSON instructions.
+    const generationConfig = web ? { maxOutputTokens: 16384 } : { responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 16384 };
     if (light && ThinkingLevel) generationConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
-    return getGenerativeModel(getAI(app, { backend: new GoogleAIBackend() }), { model: GEMINI_MODEL, systemInstruction: SYSTEM, generationConfig });
+    const opts = { model: modelName, systemInstruction: SYSTEM, generationConfig };
+    if (web) opts.tools = [{ googleSearch: {} }, { urlContext: {} }];
+    return getGenerativeModel(getAI(app, { backend: new GoogleAIBackend() }), opts);
   })();
   modelPromises[key].catch(() => { delete modelPromises[key]; });
   return modelPromises[key];
 }
 let useLightThinking = true;
+let modelIndex = 0; // which entry in COACH_MODELS is working this session
+const currentCoachModel = () => COACH_MODELS[modelIndex];
 
-const deckContext = (deck, collection, format) =>
-  `Format: ${formatName(format)}\n\nCurrent deck ("${deck.name}"):\n${deck.entries.length ? exportDecklist(deck.entries) : '(empty)'}\n\nCards we own:\n${collectionText(collection) || '(nothing recorded yet)'}`;
+const NOTES_LIMIT = 1500;
+const deckContext = (deck, collection, format, notes = '', otherDecks = '') =>
+  `Coach notes (family preferences):\n${notes.trim() || '(none yet)'}\n\nOur other decks:\n${otherDecks || '(none)'}\n\nFormat: ${formatName(format)}\n\nCurrent deck ("${deck.name}"):\n${deck.entries.length ? exportDecklist(deck.entries) : '(empty)'}\n\nCards we own:\n${collectionText(collection) || '(nothing recorded yet)'}`;
+
+// One line per other deck, e.g. "Charizard v2 (60 cards; main Pokémon: Charizard ex, Pidgeot ex)".
+function describeDecks(decks, currentId) {
+  return decks.filter((d) => d.id !== currentId).map((d) => {
+    const total = d.entries.reduce((n, e) => n + e.count, 0);
+    const mons = d.entries.filter((e) => sectionOf(e.card) === 'pokemon').sort((a, b) => b.count - a.count).slice(0, 3).map((e) => e.card.name);
+    return `${d.name} (${total} cards${mons.length ? `; main Pokémon: ${[...new Set(mons)].join(', ')}` : ''})`;
+  }).join('\n');
+}
+
+// What happened to a coach answer's suggestions, so the coach doesn't repeat itself.
+function suggestionOutcomes(m) {
+  const list = (m.suggestions || []).filter((x) => x.action !== 'show');
+  if (!list.length) return '';
+  const status = (x) => (x.done ? (x.action === 'remove' ? 'removed' : 'added') : x.dismissed ? 'passed' : 'no action yet');
+  return `\n\n[Suggestions and what we did: ${list.map((x) => `${x.action === 'remove' ? '-' : '+'}${x.count} ${x.name} (${status(x)})`).join('; ')}]`;
+}
 
 function friendlyCoachError(e) {
   const m = `${e?.code || ''} ${e?.message || ''}`.toLowerCase();
-  if (/quota|resource.?exhausted|429|rate/.test(m)) return 'The coach has used up its free requests for now. Try again later (the daily limit resets overnight), or use Copy for Claude.';
+  if (/quota|resource.?exhausted|429|rate/.test(m)) return isPerMinute(e)
+    ? 'The coach is getting questions too fast for the free plan. Wait a minute, then ask again.'
+    : 'The coach has used up today’s free requests. They reset overnight (Pacific time). Until then, use Copy for Claude.';
   if (/app.?check|recaptcha|attestation|403|permission/.test(m)) return 'Firebase blocked the coach. Check the App Check and reCAPTCHA steps in SETUP.md, including your site’s address in the reCAPTCHA domains.';
-  if (/not.?found|404|model/.test(m)) return `The coach model “${GEMINI_MODEL}” isn’t available. Update geminiModel in firebase-config.js (see SETUP.md).`;
+  if (/not.?found|404|model/.test(m)) return `None of the coach models are available right now. Update geminiModel in firebase-config.js to a current Flash-Lite model (see SETUP.md).`;
   if (/api.?not.?enabled|ai logic|firebasevertexai|generativelanguage/.test(m)) return 'AI Logic isn’t turned on for this Firebase project yet. See step 2 in SETUP.md.';
   if (/network|fetch|offline/.test(m)) return 'Couldn’t reach the coach. Check your internet connection and try again.';
   return 'The coach couldn’t answer. Try again, or use Copy for Claude.';
@@ -563,7 +625,7 @@ function parseCoachJson(text) {
   const a = t.indexOf('{'), b = t.lastIndexOf('}');
   if (a >= 0 && b > a) t = t.slice(a, b + 1);
   const d = JSON.parse(t);
-  return { reply: String(d.reply || ''), suggestions: Array.isArray(d.suggestions) ? d.suggestions.filter((x) => x && x.name) : [] };
+  return { reply: String(d.reply || ''), suggestions: Array.isArray(d.suggestions) ? d.suggestions.filter((x) => x && x.name) : [], remember: String(d.remember || '').trim() };
 }
 // If the answer was cut off partway, rescue the written reply so it isn't lost.
 function salvageReply(text) {
@@ -572,51 +634,89 @@ function salvageReply(text) {
   try { return JSON.parse(`"${m[1].replace(/\\$/, '')}"`); } catch { return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'); }
 }
 
-async function callCoach(contents) {
-  try {
-    return await (await getCoachModel(useLightThinking)).generateContent({ contents });
-  } catch (e) {
-    // Some models don't accept thinking settings; switch to the plain version and try again.
-    if (useLightThinking && /thinking/i.test(`${e?.message || ''}`)) { useLightThinking = false; return (await getCoachModel(false)).generateContent({ contents }); }
-    throw e;
+const isQuotaError = (e) => /quota|resource.?exhausted|429|rate.?limit/i.test(`${e?.code || ''} ${e?.message || ''}`);
+const isPerMinute = (e) => /per.?minute|perminute|rpm/i.test(`${e?.message || ''}`);
+const isMissingModel = (e) => /not.?found|404|is not supported|unknown model/i.test(`${e?.code || ''} ${e?.message || ''}`);
+
+async function callCoach(contents, web = false) {
+  let lastError;
+  while (modelIndex < COACH_MODELS.length) {
+    const name = currentCoachModel();
+    try {
+      return { result: await (await getCoachModel(useLightThinking, name, web)).generateContent({ contents }), web };
+    } catch (e) {
+      lastError = e;
+      // Some models don't accept thinking settings; use the plain version and try again.
+      if (useLightThinking && /thinking/i.test(`${e?.message || ''}`)) { useLightThinking = false; continue; }
+      // If web search isn't available (tool not allowed, its own quota used up), answer without it.
+      if (web) { console.warn('Web search unavailable, answering without it', e); web = false; continue; }
+      // Out of free daily requests, or the model was retired: move to the next model.
+      if ((isQuotaError(e) && !isPerMinute(e)) || isMissingModel(e)) {
+        console.warn(`Coach model ${name} unavailable, trying the next one`, e);
+        if (modelIndex < COACH_MODELS.length - 1) { modelIndex++; continue; }
+      }
+      throw e;
+    }
   }
+  throw lastError;
 }
 
-async function askCoach({ history, message, deck, collection, format }) {
+// Google requires showing its search suggestions and the sources whenever an answer used Google Search.
+function groundingInfo(result) {
+  const g = result?.response?.candidates?.[0]?.groundingMetadata;
+  if (!g) return {};
+  const sources = [];
+  const seen = new Set();
+  for (const c of g.groundingChunks || []) {
+    const uri = c.web?.uri, title = c.web?.title || c.web?.domain || 'Source';
+    if (uri && !seen.has(uri)) { seen.add(uri); sources.push({ title, uri }); }
+  }
+  return { searchHtml: g.searchEntryPoint?.renderedContent || '', sources: sources.slice(0, 8) };
+}
+
+const WEB_HINT = /limitless|tournament|meta|top deck|decklist|best list|website|online|https?:\/\//i;
+
+async function askCoach({ history, message, deck, collection, format, notes, otherDecks, web = false }) {
+  const useWeb = web || WEB_HINT.test(message);
   const base = [
     ...history.slice(-12).map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-    { role: 'user', parts: [{ text: `${deckContext(deck, collection, format)}\n\n${message}` }] },
+    { role: 'user', parts: [{ text: `${deckContext(deck, collection, format, notes, otherDecks)}\n\n${useWeb ? '(Web search is available for this question.)\n\n' : ''}${message}` }] },
   ];
   let lastText = '';
   for (let attempt = 0; attempt < 2; attempt++) {
-    const contents = attempt === 0 ? base : [...base.slice(0, -1), { role: 'user', parts: [{ text: base[base.length - 1].parts[0].text + '\n\n(Please keep this answer short: under 150 words, and at most 6 suggestions.)' }] }];
-    let result;
-    try { result = await callCoach(contents); }
+    const contents = attempt === 0 ? base : [...base.slice(0, -1), { role: 'user', parts: [{ text: base[base.length - 1].parts[0].text + '\n\n(Please keep this answer short: under 150 words, and at most 6 suggestions. Answer with only the JSON object.)' }] }];
+    let res;
+    try { res = await callCoach(contents, useWeb); }
     catch (e) { console.error(e); throw new Error(friendlyCoachError(e)); }
+    const { result } = res;
+    const extra = { ...groundingInfo(result), webNote: useWeb && !res.web ? 'Web search wasn’t available for this answer, so it’s from the coach’s own knowledge.' : '' };
     try { lastText = result.response.text(); } catch (e) { console.error('Coach response had no text', e, result?.response); lastText = ''; }
-    try { return parseCoachJson(lastText); }
+    try { return { ...parseCoachJson(lastText), ...extra }; }
     catch {
       console.warn('Coach answer could not be read', result?.response?.candidates?.[0]?.finishReason, lastText);
       const rescued = salvageReply(lastText);
-      if (rescued) return { reply: rescued.trim() + '\n\n*(This answer got cut off. Ask “keep going” to hear the rest.)*', suggestions: [] };
+      if (rescued) return { reply: rescued.trim() + '\n\n*(This answer got cut off. Ask “keep going” to hear the rest.)*', suggestions: [], ...extra };
+      // A plain-text answer (common with web search) is still useful: show it as the reply.
+      if (lastText.trim().length > 40 && !/^\s*[{\[]/.test(lastText)) return { reply: lastText.trim(), suggestions: [], ...extra };
     }
   }
   throw new Error('The coach’s answer came back garbled twice. Try a shorter question, or start a New chat (long chats give the coach more to read).');
 }
 
 /* ---------- Copy for Claude (free, no setup) ---------- */
-function claudePrompt({ question, deck, collection, format }) {
+function claudePrompt({ question, deck, collection, format, notes = '', otherDecks = '' }) {
   return `I'm building Pokémon TCG decks with my kid and would love your help.
 
 ${question.trim() || 'Please look over our current deck. What are we missing, and what could we use from the cards we own instead?'}
 
 Some context:
-- Prefer cards we already own, and tell us plainly when a suggestion is a card we don't have.
+- Suggest a mix of cards from our collection and good cards we don't have in the app yet (including full evolution lines), so we know what to look for. Our app collection may be incomplete.
+- Feel free to check current decklists on limitlesstcg.com for this archetype, and tell us where ideas come from.
 - ${RULES_TEXT}
 - Explain things simply enough for a kid to follow.
 - When you suggest a full or updated deck, give the complete 60-card list in Pokémon TCG Live format (like "4 Dreepy TWM 128") under "Pokémon:", "Trainer:" and "Energy:" headings, so I can paste it into our deck app.
 
-${deckContext(deck, collection, format)}`;
+${deckContext(deck, collection, format, notes, otherDecks)}`;
 }
 
 /* ---------- Small components ---------- */
@@ -916,8 +1016,50 @@ const STARTERS = [
   'Explain how this deck wins, in a way a kid can follow.',
   'Build a 60-card deck around a Pokémon we own. Ask me which one first.',
 ];
+// Bold phrases in a reply that look like card names and aren't already suggestions.
+function mentionedCardNames(reply, suggestions) {
+  const have = new Set(suggestions.map((x) => x.name.toLowerCase()));
+  const out = [];
+  for (const m of String(reply || '').matchAll(/\*\*([^*]{3,40})\*\*/g)) {
+    const name = m[1].trim().replace(/[.:!,]+$/, '');
+    if (name.split(/\s+/).length > 5 || /^\d/.test(name) || have.has(name.toLowerCase())) continue;
+    have.add(name.toLowerCase()); out.push(name);
+  }
+  return out.slice(0, 6);
+}
+async function findMentionedCards(names, collection, deck) {
+  const known = [...deck.entries.map((e) => e.card), ...Object.values(collection).map((e) => e.card), ...EXTRA_CARDS];
+  const results = [];
+  for (const name of names) {
+    let card = known.find((c) => c.name.toLowerCase() === name.toLowerCase()) || null;
+    if (!card) { try { card = await findByName(name); } catch {} }
+    if (card) results.push({ action: 'show', name: card.name, count: 1, reason: 'Mentioned above.', card, done: false });
+  }
+  return results;
+}
+
+// Google's search-suggestion chips, kept in a shadow DOM (as Google recommends) so their styles can't affect the page.
+function SearchSuggestions({ htmlText }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const root = el.shadowRoot || el.attachShadow({ mode: 'open' });
+    root.innerHTML = htmlText;
+    root.querySelectorAll('a').forEach((a) => { a.target = '_blank'; a.rel = 'noopener'; });
+  }, [htmlText]);
+  return html`<div class="search-chips" ref=${ref}></div>`;
+}
+
 const CHAT_LIMIT = 40;
-function AssistantPanel({ deck, collection, format, store, onAdd, onRemove, onOpen }) {
+const deckCountOf = (deck, card) => deck.entries.filter((e) => e.card.id === card.id || e.card.name === card.name).reduce((n, e) => n + e.count, 0);
+// Add a note as a new "- " line, keeping the notes within the length limit.
+function addNote(notes, note) {
+  const line = `- ${note.replace(/^[-•]\s*/, '').trim()}`;
+  return [notes.trim(), line].filter(Boolean).join('\n').slice(-NOTES_LIMIT);
+}
+function AssistantPanel({ deck, collection, format, store, notes, otherDecks, onAdd, onRemove, onOpen, onOwned }) {
+  const [web, setWeb] = usePref('db.webSearch', true);
   const [messages, setMessagesRaw] = useState([]), [input, setInput] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const [copied, setCopied] = useState(false), [chatLoaded, setChatLoaded] = useState(false);
   const threadRef = useRef(null);
@@ -943,28 +1085,39 @@ function AssistantPanel({ deck, collection, format, store, onAdd, onRemove, onOp
 
   async function send(text) {
     if (!text.trim() || busy || !COACH_READY) return;
-    const history = messages.map((m) => ({ role: m.role, content: m.text }));
+    const history = messages.map((m) => ({ role: m.role, content: m.role === 'assistant' ? m.text + suggestionOutcomes(m) : m.text }));
     setMessagesRaw((m) => [...m, { role: 'user', text }]); setInput(''); setBusy(true); setError(null);
     try {
-      const d = await askCoach({ history, message: text, deck, collection, format });
+      const d = await askCoach({ history, message: text, deck, collection, format, notes, otherDecks, web });
       let suggestions = d.suggestions;
       if (suggestions.length) {
         let res = [];
         try { res = await resolveLines(suggestions.map((s) => ({ name: s.name, setCode: s.setCode || '', number: s.number || '', count: s.count || 1 }))); } catch {}
         suggestions = suggestions.map((s, i) => ({ ...s, count: s.count || 1, card: res[i]?.card || null, done: false }));
       }
-      setMessages((m) => [...m, { role: 'assistant', text: d.reply, suggestions }]);
+      // Cards the coach mentioned in bold but forgot to list still get pictures.
+      try { suggestions = [...suggestions, ...await findMentionedCards(mentionedCardNames(d.reply, suggestions), collection, deck)]; } catch {}
+      const remember = d.remember && !notes.toLowerCase().includes(d.remember.toLowerCase()) ? d.remember.slice(0, 200) : '';
+      setMessages((m) => [...m, { role: 'assistant', text: d.reply, suggestions, remember, rememberState: remember ? 'ask' : '',
+        searchHtml: d.searchHtml || '', sources: d.sources || [], webNote: d.webNote || '' }]);
     } catch (e) { setError(e.message); setMessagesRaw((m) => m.slice(0, -1)); setInput(text); }
     finally { setBusy(false); }
   }
+  const updateSugg = (mi, si, patch) =>
+    setMessages((m) => m.map((msg, i) => (i !== mi ? msg : { ...msg, suggestions: msg.suggestions.map((x, j) => (j === si ? { ...x, ...patch } : x)) })));
   function apply(mi, si) {
     const s = messages[mi].suggestions[si];
     if (!s.card) return;
     s.action === 'remove' ? onRemove(s.card, s.count) : onAdd(s.card, s.count);
-    setMessages((m) => m.map((msg, i) => (i !== mi ? msg : { ...msg, suggestions: msg.suggestions.map((x, j) => (j === si ? { ...x, done: true } : x)) })));
+    updateSugg(mi, si, { done: true, dismissed: false });
+  }
+  function rememberNote(mi, save) {
+    const msg = messages[mi];
+    if (save) store.saveCoachNotes(addNote(notes, msg.remember)).catch(() => {});
+    setMessages((m) => m.map((x, i) => (i !== mi ? x : { ...x, rememberState: save ? 'saved' : 'skipped' })));
   }
   async function copyForClaude() {
-    const text = claudePrompt({ question: input, deck, collection, format });
+    const text = claudePrompt({ question: input, deck, collection, format, notes, otherDecks });
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 6000); }
     catch { window.prompt('Copy this, then paste it into Claude:', text); }
   }
@@ -977,22 +1130,35 @@ function AssistantPanel({ deck, collection, format, store, onAdd, onRemove, onOp
         ? 'The built-in coach turns on once AI Logic and App Check are set up (step 2 in SETUP.md).'
         : 'The built-in coach needs Firebase set up first (see SETUP.md).'} Until then, type a question below and use Copy for Claude.</p></div>`}
       ${COACH_READY && chatLoaded && messages.length === 0 && html`<div class="starters">
-        <p class="muted">Ask about “${deck.name}”. The coach sees this deck and the cards you own.</p>
+        <p class="muted">Ask about “${deck.name}”. The coach sees this deck, the cards you own${notes.trim() ? ', and your coach notes' : ''}.</p>
         ${STARTERS.map((s) => html`<button class="starter" onClick=${() => send(s)}>${s}</button>`)}
       </div>`}
       ${messages.map((m, mi) => html`<div class=${`msg ${m.role === 'user' ? 'msg-user' : 'msg-coach'}`}>
         ${m.role === 'user' ? html`<p>${m.text}</p>` : richText(m.text)}
-        ${m.suggestions?.length > 0 && html`<div class="suggest">${m.suggestions.map((s, si) => html`<div class=${`sugg ${s.action}`}>
+        ${m.sources?.length > 0 && html`<div class="sources"><span class="small muted">Sources:</span>
+          ${m.sources.map((src) => html`<a href=${src.uri} target="_blank" rel="noopener">${src.title}</a>`)}</div>`}
+        ${m.searchHtml && html`<${SearchSuggestions} htmlText=${m.searchHtml} />`}
+        ${m.webNote && html`<p class="small muted">${m.webNote}</p>`}
+        ${m.suggestions?.length > 0 && html`<div class="suggest">${m.suggestions.map((s, si) => html`
+          ${s.group && s.group !== m.suggestions[si - 1]?.group && html`<p class="sugg-group">${s.group}</p>`}
+          <div class=${`sugg ${s.action}`}>
           ${s.card ? html`<${CardTile} card=${s.card} onOpen=${onOpen} />` : html`<div class="ghosted">${s.name}</div>`}
           <div class="sugg-body">
-            <strong>${s.action === 'remove' ? '−' : '+'}${s.count} ${s.name}</strong>
+            <strong>${s.action === 'show' ? s.name : `${s.action === 'remove' ? '−' : '+'}${s.count} ${s.name}`}</strong>
             <span class="small">${s.reason}</span>
-            ${s.card && s.action === 'add' && html`<span class="small muted">We own ${ownedCount(s.card, collection)}</span>`}
-            ${s.card
-              ? html`<button class="mini" disabled=${s.done} onClick=${() => apply(mi, si)}>${s.done ? (s.action === 'remove' ? 'Removed' : 'Added') : s.action === 'remove' ? 'Remove from deck' : 'Add to deck'}</button>`
-              : html`<span class="small warn">Couldn’t find this card. Try Find cards.</span>`}
+            ${s.card && s.action !== 'remove' && html`<span class="small muted">${ownedCount(s.card, collection)
+              ? `${ownedCount(s.card, collection)} in your collection` : 'Not in your app collection yet'}${deckCountOf(deck, s.card) ? `, ${deckCountOf(deck, s.card)} in this deck` : ''}
+              ${ownedCount(s.card, collection) < Math.max(1, s.count) && html` <button class="linkbtn" onClick=${() => onOwned(s.card, Math.max(1, s.count))}>We have it</button>`}</span>`}
+            ${!s.card ? html`<span class="small warn">Couldn’t find this card. Try Find cards.</span>`
+              : s.done ? html`<span class="sugg-status ok">${s.action === 'remove' ? 'Removed' : 'Added'}</span>`
+              : s.dismissed ? html`<span class="sugg-status">Passed <button class="linkbtn" onClick=${() => updateSugg(mi, si, { dismissed: false })}>Undo</button></span>`
+              : html`<div class="row"><button class="mini" onClick=${() => apply(mi, si)}>${s.action === 'remove' ? 'Remove from deck' : s.action === 'show' ? 'Add 1 to deck' : 'Add to deck'}</button>
+                  ${s.action !== 'show' && html`<button class="mini ghost" onClick=${() => updateSugg(mi, si, { dismissed: true })}>No thanks</button>`}</div>`}
           </div>
         </div>`)}</div>`}
+        ${m.rememberState === 'ask' && html`<div class="remember"><span>Remember this for next time? <b>“${m.remember}”</b></span>
+          <div class="row"><button class="mini" onClick=${() => rememberNote(mi, true)}>Save to coach notes</button><button class="mini ghost" onClick=${() => rememberNote(mi, false)}>No thanks</button></div></div>`}
+        ${m.rememberState === 'saved' && html`<p class="small muted">Saved to coach notes.</p>`}
       </div>`)}
       ${busy && html`<div class="msg msg-coach thinking">Thinking it over…</div>`}
       ${error && html`<p class="warn small">${error}</p>`}
@@ -1001,6 +1167,8 @@ function AssistantPanel({ deck, collection, format, store, onAdd, onRemove, onOp
       <textarea rows="3" value=${input} placeholder=${COACH_READY ? 'Ask, or paste a list from Limitless…' : 'Type a question for Claude…'} aria-label="Message the deck coach"
         onInput=${(e) => setInput(e.target.value)}
         onKeyDown=${(e) => { if (COACH_READY && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}></textarea>
+      <label class="check webtoggle" title="Lets the coach look up decklists on Limitless and other sites">
+        <input type="checkbox" checked=${web} onChange=${(e) => setWeb(e.target.checked)} /> Search the web</label>
       <div class="composer-actions">
         ${COACH_READY && html`<button class="btn" disabled=${busy || !input.trim()}>Send</button>`}
         <button type="button" class="btn ghost" onClick=${copyForClaude}>${copied ? 'Copied' : 'Copy for Claude'}</button>
@@ -1013,16 +1181,28 @@ function AssistantPanel({ deck, collection, format, store, onAdd, onRemove, onOp
 }
 
 /* ---------- Settings and family code ---------- */
-function Settings({ mode, onClose, onDisconnect }) {
+function Settings({ mode, notes, onSaveNotes, onClose, onDisconnect }) {
+  const [draft, setDraft] = useState(notes || '');
+  const [saved, setSaved] = useState(false);
   useEscape(onClose);
+  async function saveNotes() { await onSaveNotes(draft); setSaved(true); setTimeout(() => setSaved(false), 2000); }
   return html`<div class="scrim" onClick=${onClose}>
     <div class="modal settings" role="dialog" aria-modal="true" aria-label="Settings" onClick=${(e) => e.stopPropagation()}>
       <h2>Settings</h2>
-      <p class="small" style="margin-top:12px">${mode === 'firebase' ? html`<b>Shared with Firebase.</b> Decks and cards sync across your devices.` : 'Saved on this device only. Fill in firebase-config.js to share across devices.'}</p>
-      <p class="small">${COACH_READY ? html`<b>Deck coach is on</b> (Google Gemini, free tier: ${GEMINI_MODEL}).` : 'Deck coach is off until AI Logic and App Check are set up (SETUP.md, step 2). Copy for Claude still works.'}</p>
+      <label for="cn">Coach notes</label>
+      <p class="muted small">Things the coach should always remember, for every deck. One per line works well. The coach can also offer to add notes when you mention a preference in chat.</p>
+      <textarea id="cn" rows="6" maxlength=${NOTES_LIMIT} value=${draft} onInput=${(e) => setDraft(e.target.value)}
+        placeholder=${'- My son is 9, so explain things simply.\n- We play casual games at home.\n- He loves Fire-type Pokémon.\n- Build from cards we own; we don’t buy singles.'}></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" disabled=${draft === (notes || '')} onClick=${saveNotes}>${saved ? 'Saved' : 'Save notes'}</button>
+        <span class="small muted">${draft.length} / ${NOTES_LIMIT}</span>
+      </div>
+      <hr class="divider" />
+      <p class="small">${mode === 'firebase' ? html`<b>Shared with Firebase.</b> Decks, cards, chats and coach notes sync across your devices.` : 'Saved on this device only. Fill in firebase-config.js to share across devices.'}</p>
+      <p class="small">${COACH_READY ? html`<b>Deck coach is on</b> (Google Gemini, free tier: ${currentCoachModel()}).` : 'Deck coach is off until AI Logic and App Check are set up (SETUP.md, step 2). Copy for Claude still works.'}</p>
       <p class="small">Card data and images come from <a href="https://tcgdex.dev" target="_blank" rel="noopener">TCGdex</a>, a free, open-source card database.</p>
       <div class="row" style="margin-top:16px">
-        <button class="btn" onClick=${onClose}>Close</button>
+        <button class="btn ghost" onClick=${onClose}>Close</button>
         ${mode === 'firebase' && html`<button class="btn ghost danger" onClick=${onDisconnect}>Forget family code</button>`}
       </div>
     </div>
@@ -1199,6 +1379,8 @@ function App() {
         ${tab === 'collection' && html`<${CollectionView} collection=${collection} store=${store} onOpen=${setModalCard} />`}
       </main>
       <${AssistantPanel} key=${deck.id} deck=${deck} collection=${collection} format=${format}
+        notes=${data.coachNotes || ''} otherDecks=${describeDecks(decks, deck.id)}
+        onOwned=${(card, count) => store.setOwned(card, Math.max(ownedExact(card), count))}
         store=${store} onAdd=${addToDeck} onRemove=${removeFromDeck} onOpen=${setModalCard} />
     </div>
 
@@ -1209,7 +1391,7 @@ function App() {
       onDeleteExtra=${(c) => { if (confirm(`Remove “${c.name}” from the extra cards? Decks that use it keep their copy.`)) { store.deleteCustomCard(c.id); setModalCard(null); } }} />`}
     ${extraForm && html`<${ExtraCardForm} initialName=${extraForm.name} onClose=${() => setExtraForm(null)}
       onSave=${(c) => { store.saveCustomCard(c); setExtraForm(null); setModalCard(c); }} />`}
-    ${settings && html`<${Settings} mode=${store.mode} onClose=${() => setSettings(false)}
+    ${settings && html`<${Settings} mode=${store.mode} notes=${data.coachNotes || ''} onSaveNotes=${(t) => store.saveCoachNotes(t)} onClose=${() => setSettings(false)}
       onDisconnect=${() => { setSettings(false); setStore(null); setData({ decks: {}, collection: {}, loaded: false }); setCode(''); }} />`}
   </div>`;
 }

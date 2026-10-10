@@ -68,12 +68,19 @@ Good to know:
 
 - The coach only works from your real site address, not from a copy of
   `index.html` opened on your computer, because reCAPTCHA checks the domain.
-- The free tier has daily limits. If the coach says it's used up its free
-  requests, try again later or use **Copy for Claude**.
+- The free tier has limits. With the default Flash-Lite model that's about
+  500 questions a day and 15 a minute; standard Flash models get only about
+  20 a day, so stick with Flash-Lite. If the coach says it's used up today's
+  free requests, use **Copy for Claude** until they reset overnight.
 - On the free tier, Google's terms let it use your requests to improve its
   products. Deck lists and card names are all that's sent.
-- If Google retires the model, change `geminiModel` in `firebase-config.js`
-  to a current one listed on Firebase's AI Logic models page.
+- With **Search the web** on, the coach can look things up on Limitless and
+  other sites. Web searches may have their own free limit; if it runs out,
+  the coach answers from its own knowledge and says so. Untick the box to
+  save searches for when you need them.
+- If Google retires the model, the app tries other Flash-Lite models on its
+  own. You can also change `geminiModel` in `firebase-config.js` to a current
+  Flash-Lite model from Firebase's AI Logic models page.
 
 ## 3. Put it on GitHub Pages
 

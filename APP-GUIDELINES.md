@@ -37,7 +37,13 @@ an AI coach to find substitutes and understand the deck.
 - Formats: Standard, Expanded, and Casual (no legality checks).
 - The deck coach uses Gemini through Firebase AI Logic (Gemini Developer API,
   free tier, Spark plan) with App Check using the reCAPTCHA v3 provider.
+  Use Flash-Lite models: in late 2026 the free tier gives them about 500
+  requests a day versus about 20 for standard Flash. `COACH_MODELS` lists
+  fallbacks used when a model is out of daily quota or retired.
   Everything must stay free: no billing account, no paid API keys.
+- The coach suggests both cards in the collection and cards not in the app
+  yet (the app collection may be incomplete); suggestions can carry a
+  `group` heading, and "We have it" adds a suggested card to the collection.
 - Copy for Claude builds a prompt (`claudePrompt()`) for the user to paste
   into claude.ai; Claude's decklist comes back in through Import list.
 
@@ -59,17 +65,33 @@ an AI coach to find substitutes and understand the deck.
 7. **Coach chat UI.** Coach messages use the `msg-user` / `msg-coach`
    classes; never reuse the panel's `assistant` class on messages (that caused
    overlapping sticky messages in 1.2.0). Replies render via `richText()`.
-8. **Coach output.** The coach answers as JSON (reply plus suggestions) using
+8. **Web search.** With "Search the web" on (per-device setting, default on)
+   or when a question mentions Limitless, tournaments, or a link, the coach
+   uses a model variant with the `googleSearch` and `urlContext` tools. That
+   variant has no response schema (it relies on the JSON instructions and the
+   tolerant parser). Google requires displaying `searchEntryPoint`
+   (rendered in a shadow DOM by `SearchSuggestions`) and the sources from
+   `groundingChunks` for any grounded answer; never remove those. If the web
+   variant fails, `callCoach()` retries without tools and the answer notes it.
+9. **Coach memory.** Each question sends: coach notes, other decks
+   (`describeDecks()`), format, current deck, collection, and the last 12
+   chat messages. Past coach answers are sent with a bracketed list of what
+   happened to each suggestion (`suggestionOutcomes()`: added, removed,
+   passed, no action yet) so the coach doesn't repeat itself. The coach may
+   return `remember` (a proposed note); it's only saved after the family
+   taps "Save to coach notes". Bold card names in a reply that aren't in
+   `suggestions` get pictures via `findMentionedCards()` (action `show`).
+10. **Coach output.** The coach answers as JSON (reply plus suggestions) using
    a response schema, so suggestions can be shown as cards with an Add or
    Remove button. It prefers owned cards and must not invent cards. Coach
    errors map to plain messages in `friendlyCoachError()`.
-9. **Kid-friendly copy.** Plain words, sentence case, errors that say what to
+11. **Kid-friendly copy.** Plain words, sentence case, errors that say what to
    do next.
-10. **Design.** Cool page background, navy binder sheets for deck sections
+12. **Design.** Cool page background, navy binder sheets for deck sections
    with section colors (Pokémon purple, Trainers blue, Energy gold), Bricolage
    Grotesque headings and Lexend body text, visible focus outlines, works on
    phones.
-11. **Update everywhere.** Each release updates `index.html`, `CHANGELOG.md`,
+13. **Update everywhere.** Each release updates `index.html`, `CHANGELOG.md`,
     and `SETUP.md` when instructions change. Remind the user to upload to
     GitHub and check the version label.
 
@@ -82,3 +104,5 @@ an AI coach to find substitutes and understand the deck.
 - `chats/{deckId}`: `{ messages, updatedAt }`, the coach chat saved with each
   deck (last 40 messages). Deleted with its deck; not copied by Copy deck.
 - `customCards/{id}`: family-added extra cards (ids start with `custom-`).
+- `settings/coach`: `{ notes, updatedAt }`, the shared coach notes (up to
+  1,500 characters), sent with every coach question.

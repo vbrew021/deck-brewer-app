@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.5.0 (October 10, 2026)
+- Added: "Search the web" (on by default) lets the coach look up current
+  decklists on Limitless and other sites with Google Search, and read pages
+  you paste a link to. Answers that used search show their sources and
+  Google's search suggestions, as Google requires. If web search isn't
+  available, the coach answers anyway and says so.
+- Changed: the coach now suggests a mix of cards from your collection and
+  good cards you don't have in the app yet, including full evolution lines,
+  grouped under headings like "From your collection" and "Worth picking up".
+- Added: "We have it" on suggestions for cards in your physical collection
+  that aren't in the app yet; it adds them to Our cards.
+- No Firebase changes needed.
+
+## 1.4.0 (October 10, 2026)
+- Added: coach notes in Settings, shared lasting preferences the coach follows
+  for every deck. When you mention a preference in chat, the coach offers to
+  remember it, and nothing is saved until you tap "Save to coach notes".
+- Added: the coach sees your other decks' names and main Pokémon.
+- Added: "No thanks" on coach suggestions. The coach is told which
+  suggestions you added or passed on, so it stops repeating them.
+- Fixed: card pictures with suggestions. The coach is told firmly to list
+  every recommended card, and any card it names in bold without listing
+  still gets a picture and an "Add 1 to deck" button.
+- Copy for Claude includes the coach notes and other decks too.
+- No Firebase changes needed.
+
+## 1.3.2 (October 10, 2026)
+- Changed: the coach now uses Gemini 3.5 Flash-Lite by default. Google's free
+  tier gives Flash-Lite about 500 requests a day, versus about 20 for
+  standard Flash models.
+- Added: if the coach's model runs out of free requests or is retired, it
+  switches to another Flash-Lite model automatically.
+- The "used up" message now says whether to wait a minute or until tomorrow.
+- Needs updated firebase-config.js: change the geminiModel line to
+  "gemini-3.5-flash-lite" (or copy your values into the new file).
+
 ## 1.3.1 (October 10, 2026)
 - Fixed: "The coach's answer came back garbled." The coach now uses light
   thinking and a much larger answer limit, so long answers don't get cut off.
