@@ -2,7 +2,9 @@
 
 Deck Brewer runs on GitHub Pages and keeps your decks and cards in Firebase,
 so everyone in the family sees the same decks and cards on every device.
-Everything here is free: no credit card, no API keys to buy.
+Everything here is free: no credit card, no API keys to buy. Card data and
+images come from TCGdex (https://tcgdex.dev), a free, open-source card
+database that needs no sign-up.
 
 ## 1. Create a Firebase project (about 5 minutes)
 
@@ -85,10 +87,8 @@ Good to know:
 
 ## 4. First visit on each device
 
-1. Open the site and enter the family code.
-2. Optional: tap **Settings** and add a free card database key from
-   https://dev.pokemontcg.io. It raises the lookup limit from 1,000 to
-   20,000 a day.
+Open the site and enter the family code. That's it; there's nothing else to
+set up per device.
 
 ## Copy for Claude
 

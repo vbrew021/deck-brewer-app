@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 (October 10, 2026)
+- Changed: card data and images now come from TCGdex, a free, open-source
+  card database, because the Pokémon TCG API (pokemontcg.io) is shutting down.
+- Added: cards saved before this version are updated to TCGdex automatically
+  the first time the app opens, keeping your counts.
+- Removed: the card database key setting (TCGdex doesn't need one).
+- No Firebase changes needed.
+
 ## 1.1.0 (October 10, 2026)
 - Changed: the deck coach now uses Google Gemini through Firebase AI Logic on
   the free tier, so there's no API key to buy or paste on each device.

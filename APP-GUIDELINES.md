@@ -19,7 +19,17 @@ an AI coach to find substitutes and understand the deck.
   `import * as cfg` so older config files without newer lines still load.
 - Shared data in Firestore under `deckbrewer/{familyCode}/`. The code is
   entered on the first visit, lowercased, and checked by `firestore.rules`.
-- Card data comes straight from pokemontcg.io in the browser.
+- Card data and images come from TCGdex's free GraphQL API
+  (`https://api.tcgdex.net/v2/graphql`), called from the browser; no key.
+  `slimCard()` converts TCGdex cards to the app's card shape. Card images
+  are the TCGdex image URL plus `/low.webp` or `/high.webp`.
+- `SET_CODES` maps Pokémon TCG Live / Limitless set codes (TWM, SVI, MEG...)
+  to TCGdex set ids. It was built from TCGdex's open data (the
+  `abbreviations.official` field in its cards-database repo). When a new set
+  comes out, add its code; until then, lines from that set fall back to a
+  name search that picks the newest printing.
+- Cards saved before 1.2.0 (pokemontcg.io images) are upgraded once on load
+  by `upgradeLegacyCards()`.
 - The deck coach uses Gemini through Firebase AI Logic (Gemini Developer API,
   free tier, Spark plan) with App Check using the reCAPTCHA v3 provider.
   Everything must stay free: no billing account, no paid API keys.
@@ -33,7 +43,7 @@ an AI coach to find substitutes and understand the deck.
 2. **Flag rule changes.** Any change to Firestore paths adds "Needs updated
    Firebase rules" to the changelog and a reminder to the user.
 3. **Shared data lives in Firestore.** localStorage is only for per-device
-   settings (family code, card database key, format, active deck) and for
+   settings (family code, format, active deck) and for
    "this device only" mode when `firebase-config.js` isn't filled in.
 4. **Firestore-safe values.** Never write `undefined`; `slimCard()` turns
    missing fields into null, empty strings or empty arrays.
