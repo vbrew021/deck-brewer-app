@@ -1,4 +1,4 @@
-# Deck Brewer: guidelines for future changes
+# Deck Brews: guidelines for future changes
 
 Attach this file with the current `index.html` (and `firestore.rules` if
 Firebase might change) when starting a new chat about the app, and ask Claude
@@ -17,8 +17,20 @@ an AI coach to find substitutes and understand the deck.
 - `firebase-config.js` holds the Firebase config, the public reCAPTCHA v3
   site key, and the Gemini model name. index.html imports it with
   `import * as cfg` so older config files without newer lines still load.
-- Shared data in Firestore under `deckbrewer/{familyCode}/`. The code is
+- Shared data in Firestore under `deckbrewer/{familyCode}/` (the app's
+  original name, Deck Brewer; never rename this path or existing data is lost). The code is
   entered on the first visit, lowercased, and checked by `firestore.rules`.
+- Saved card data: `.github/workflows/update-cards.yml` runs
+  `scripts/build-cards.mjs` weekly (and on demand) to write `data/cards.json`:
+  `{ version, updated, series, setCodes, sets, cards }`, where each card is in
+  TCGdex's shape with `set` as an id (`sets` holds names and dates) and empty
+  fields dropped. The script reads set ids and codes from TCGdex's
+  cards-database repo, downloads the Scarlet & Violet and Mega Evolution eras
+  (plus older eras if `INCLUDE_EXPANDED=true`), and refuses to overwrite the
+  file if far fewer cards come back. The app loads it once (`localReady`,
+  `LOCAL`), merges its `setCodes`, and uses it first in `resolveLines()`,
+  `findByName()` and `searchCards()`; TCGdex live is the fallback for cards
+  not included. The app must keep working when the file is missing.
 - Card data and images come from TCGdex's free GraphQL API
   (`https://api.tcgdex.net/v2/graphql`), called from the browser; no key.
   `slimCard()` converts TCGdex cards to the app's card shape. Card images

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Deck Brewer</title>
+<title>Deck Brews</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
 <meta name="color-scheme" content="light dark" />
 <script>
@@ -288,7 +288,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.7.0';
+const VERSION = '1.8.1';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -320,8 +320,17 @@ const TCGDEX_GQL = 'https://api.tcgdex.net/v2/graphql';
 // Pokémon TCG Live / Limitless set codes → TCGdex set ids (built from TCGdex's open data).
 const SET_CODES = {"B2":["base4"],"BS":["base1"],"FO":["base3"],"JU":["base2"],"RO":["base5"],"TR":["base5","ex7"],"PR":["basep"],"PR-BLW":["bwp"],"BWP":["bwp"],"BLW":["bw1"],"BCR":["bw7"],"DEX":["bw5"],"DRV":["dv1"],"DRX":["bw6"],"EPO":["bw2"],"EP":["bw2"],"LTR":["bw11"],"NXD":["bw4"],"NVI":["bw3"],"PLB":["bw10"],"PLF":["bw9"],"PLS":["bw8"],"CL":["col1"],"COL":["col1"],"PR-DPP":["dpp"],"DP":["dp1"],"GE":["dp4"],"LA":["dp6"],"MD":["dp5"],"MT":["dp2"],"SW":["dp3"],"SF":["dp7"],"AQ":["ecard2"],"EX":["ecard1"],"SK":["ecard3"],"CG":["ex14"],"DS":["ex11"],"DX":["ex8"],"DF":["ex15"],"DR":["ex3"],"EM":["ex9"],"RG":["ex6"],"HL":["ex5"],"HP":["ex13"],"LM":["ex12"],"PK":["ex16"],"RS":["ex1"],"SS":["ex2"],"MA":["ex4"],"RR":["ex7","pl2"],"UF":["ex10"],"G2":["gym2"],"G1":["gym1"],"PR-HS":["hgssp"],"HS":["hgss1"],"TM":["hgss4"],"TRI":["hgss4"],"UD":["hgss3"],"UND":["hgss3"],"UL":["hgss2"],"LC":["lc"],"MCD11":["2011bw"],"MCD12":["2012bw"],"MCD14":["2014xy"],"MCD15":["2015xy"],"MCD16":["2016xy"],"MCD17":["2017sm"],"MCD18":["2018sm"],"MCD19":["2019sm"],"MCD21":["2021swsh"],"MCD22":["2022swsh"],"MCD23":["2023sv"],"MCD24":["2024sv"],"30C":["30th","30th-c"],"ASC":["me02.5"],"CRI":["me04"],"MEP":["mep"],"MEE":["mee"],"MEG":["me01"],"POR":["me03"],"PFL":["me02"],"PBL":["me05"],"N4":["neo4"],"N2":["neo2"],"N1":["neo1"],"N3":["neo3"],"SI":["si1"],"PR-NP":["np"],"P1":["pop1"],"P2":["pop2"],"P3":["pop3"],"P4":["pop4"],"P5":["pop5"],"P6":["pop6"],"P7":["pop7"],"P8":["pop8"],"P9":["pop9"],"AR":["pl4"],"PL":["pl1"],"SV":["pl3"],"MEW":["sv03.5"],"BLK":["sv10.5b"],"DRI":["sv10"],"JTG":["sv09"],"MFB":["mfb"],"OBF":["sv03"],"PAL":["sv02"],"PAF":["sv04.5"],"PAR":["sv04"],"PRE":["sv08.5"],"SVP":["svp"],"SVE":["sve"],"SVI":["sv01"],"SFA":["sv06.5"],"SCR":["sv07"],"SSP":["sv08"],"TEF":["sv05"],"TWM":["sv06"],"WHT":["sv10.5w"],"BUS":["sm3"],"CES":["sm7"],"CEC":["sm12"],"CIN":["sm4"],"DET":["det1"],"DRM":["sm7.5"],"FLI":["sm6"],"GRI":["sm2"],"HIF":["sm115"],"LOT":["sm8"],"PR-SM":["smp"],"SMP":["smp"],"SLG":["sm3.5"],"SUM":["sm1"],"TEU":["sm9"],"UPR":["sm5"],"UNB":["sm10"],"UNM":["sm11"],"ASR:TG":["swsh10tg"],"ASR":["swsh10","swsh10tg"],"BST":["swsh5"],"BRS":["swsh9","swsh9tg"],"BRS:TG":["swsh9tg"],"CEL":["cel25","cel25cc"],"CEL:CC":["cel25cc"],"CPA":["swsh3.5"],"CRE":["swsh6"],"CRZ:GG":["swsh12.5gg"],"CRZ":["swsh12.5","swsh12.5gg"],"DAA":["swsh3"],"EVS":["swsh7"],"FST":["swsh8"],"LOR:TG":["swsh11tg"],"LOR":["swsh11","swsh11tg"],"RCL":["swsh2"],"SHF:SV":["swsh4.5sv"],"SHF":["swsh4.5","swsh4.5sv"],"SIT":["swsh12","swsh12tg"],"SIT:TG":["swsh12tg"],"SSH":["swsh1"],"VIV":["swsh4"],"TK5E":["tk-bw-e"],"TK5Z":["tk-bw-z"],"TK3L":["tk-dp-l"],"TK3M":["tk-dp-m"],"TK1A":["tk-ex-latia"],"TK1O":["tk-ex-latio"],"TK2M":["tk-ex-m"],"TK2P":["tk-ex-p"],"TK4G":["tk-hs-g"],"TK4R":["tk-hs-r"],"TK10A":["tk-sm-r"],"TK10L":["tk-sm-l"],"TK7A":["tk-xy-b"],"TK8A":["tk-xy-latia"],"TK8O":["tk-xy-latio"],"TK6N":["tk-xy-n"],"TK9P":["tk-xy-p"],"TK9S":["tk-xy-su"],"TK6S":["tk-xy-sy"],"TK7B":["tk-xy-w"],"AOR":["xy7"],"BKP":["xy9"],"BKT":["xy8"],"DCR":["dc1"],"EVO":["xy12"],"FCO":["xy10"],"FLF":["xy2"],"FFI":["xy3"],"GEN":["g1"],"KSS":["xy0"],"PHF":["xy4"],"PRC":["xy5"],"ROS":["xy6"],"STS":["xy11"],"XYP":["xyp"],"PR-XY":["xyp"],"XY":["xy1"],"PR-SV":["svp"],"PR-SW":["swshp"],"PR-ME":["mep"]};
 const CODE_FOR_SET = {};
-for (const [code, ids] of Object.entries(SET_CODES)) for (const id of ids) {
-  if (!CODE_FOR_SET[id] || (CODE_FOR_SET[id].includes(':') && !code.includes(':'))) CODE_FOR_SET[id] = code.split(':')[0];
+function rebuildCodeForSet() {
+  for (const k of Object.keys(CODE_FOR_SET)) delete CODE_FOR_SET[k];
+  for (const [code, ids] of Object.entries(SET_CODES)) for (const id of ids) {
+    if (!CODE_FOR_SET[id] || (CODE_FOR_SET[id].includes(':') && !code.includes(':'))) CODE_FOR_SET[id] = code.split(':')[0];
+  }
+}
+rebuildCodeForSet();
+// Newer set codes arrive with the weekly card data, so new sets work without an app update.
+function mergeSetCodes(extra) {
+  for (const [code, ids] of Object.entries(extra || {})) SET_CODES[code.toUpperCase()] = [...new Set([...(SET_CODES[code.toUpperCase()] || []), ...ids])];
+  rebuildCodeForSet();
 }
 const CARD_FIELDS = `id localId name image category hp types evolveFrom stage suffix trainerType energyType effect regulationMark rarity illustrator retreat
   legal { standard expanded } abilities { name effect } attacks { name cost damage effect } set { id name releaseDate tcgOnline }`;
@@ -395,14 +404,34 @@ const ENERGY = { G: 'Grass', R: 'Fire', W: 'Water', L: 'Lightning', P: 'Psychic'
 const normName = (n) => n.replace(/\{([GRWLPFDM])\}/g, (_, x) => ENERGY[x]).replace(/\s+/g, ' ').trim();
 const cleanFilter = (s) => String(s).replace(/[|,:]/g, ' ').trim();
 
+/* ---------- Saved card data (data/cards.json, refreshed weekly by a GitHub Action) ---------- */
+// The app searches this copy first and only asks TCGdex live for cards it doesn't include.
+let LOCAL = null; // { cards, byId, byName, updated, series, setIds }
+const localReady = (async () => {
+  try {
+    const res = await fetch('data/cards.json', { cache: 'no-cache' });
+    if (!res.ok) return null;
+    const d = await res.json();
+    mergeSetCodes(d.setCodes);
+    const cards = (d.cards || []).map((c) => slimCard({ ...c, set: { id: c.set, ...(d.sets?.[c.set] || {}) } }));
+    const byId = {}, byName = {};
+    for (const c of cards) { byId[c.id] = c; (byName[c.name.toLowerCase()] ||= []).push(c); }
+    LOCAL = { cards, byId, byName, updated: d.updated || '', series: d.series || [], setIds: new Set(Object.keys(d.sets || {})) };
+    return LOCAL;
+  } catch (e) { console.warn('No saved card data; using TCGdex live', e); return null; }
+})();
+const pickBest = (list) => { const sorted = [...list].sort(newestFirst); return sorted.find((c) => c.standard) || sorted[0]; };
+
 async function findByName(raw) {
   const name = normName(raw);
   const tries = [name];
   if (/^Basic /i.test(name)) tries.push(name.replace(/^Basic /i, ''));
   else if (/ Energy$/i.test(name)) tries.push('Basic ' + name);
+  await localReady;
+  if (LOCAL) for (const n of tries) { const list = LOCAL.byName[n.toLowerCase()]; if (list?.length) return pickBest(list); }
   for (const n of tries) {
-    const list = (await fetchCards({ name: `eq:${cleanFilter(n)}` }, 100)).map(slimCard).sort(newestFirst);
-    if (list.length) return list.find((c) => c.standard) || list[0];
+    const list = (await fetchCards({ name: `eq:${cleanFilter(n)}` }, 100)).map(slimCard);
+    if (list.length) return pickBest(list);
   }
   return null;
 }
@@ -426,16 +455,20 @@ const extraByCode = (code, number) => EXTRA_CARDS.find((c) => c.setCode && code 
 const extraByName = (name) => { const n = normName(name).toLowerCase(); return EXTRA_CARDS.find((c) => c.name.toLowerCase() === n); };
 
 async function resolveLines(lines) {
+  await localReady;
   const cands = lines.map((l) => candidateIds(l.setCode, l.number));
-  const ids = [...new Set(cands.flat())];
   const found = {};
+  if (LOCAL) for (const id of cands.flat()) if (LOCAL.byId[id]) found[id] = LOCAL.byId[id];
+  // Only ask TCGdex for lines the saved copy couldn't match.
+  const ids = [...new Set(cands.filter((c) => !c.some((id) => found[id])).flat())];
   for (let i = 0; i < ids.length; i += 60) {
-    for (const c of await fetchCards({ id: 'eq:' + ids.slice(i, i + 60).join('|') })) found[c.id] = slimCard(c);
+    try { for (const c of await fetchCards({ id: 'eq:' + ids.slice(i, i + 60).join('|') })) found[c.id] = slimCard(c); }
+    catch (e) { if (!LOCAL) throw e; console.warn('TCGdex unavailable for some lines', e); }
   }
   const out = [];
   for (let i = 0; i < lines.length; i++) {
     let card = extraByCode(lines[i].setCode, lines[i].number) || cands[i].map((id) => found[id]).find(Boolean) || null;
-    if (!card && lines[i].name) card = extraByName(lines[i].name) || await findByName(lines[i].name);
+    if (!card && lines[i].name) { try { card = extraByName(lines[i].name) || await findByName(lines[i].name); } catch (e) { if (!LOCAL) throw e; } }
     out.push({ ...lines[i], card });
   }
   return out;
@@ -499,7 +532,28 @@ function sortCards(cards, sort) {
 // Find cards: send what TCGdex can filter, then apply the rest here.
 const STAGE_TCGDEX = { Basic: 'Basic', 'Stage 1': 'Stage1', 'Stage 2': 'Stage2' };
 const TRAINER_TCGDEX = { Item: 'Item', Supporter: 'Supporter', 'Pokémon Tool': 'Tool', Stadium: 'Stadium' };
+const anyFilter = (f) => !!(f.q.trim() || f.kind !== 'all' || activeAdvanced(f));
 async function searchCards(f) {
+  await localReady;
+  const extras = EXTRA_CARDS.filter((c) => matchesFilters(c, f, { skipFormat: true }) && (f.q.trim() || f.set.trim() || f.text.trim()));
+  if (!LOCAL) return searchTcgdex(f, extras);
+  if (!anyFilter(f)) return { cards: extras, needMore: !extras.length };
+  const local = LOCAL.cards.filter((c) => matchesFilters(c, f));
+  // The saved copy has every Standard card. Other formats may need older cards from TCGdex.
+  const setIds = f.set.trim() ? SET_CODES[f.set.trim().toUpperCase()] || [] : null;
+  const covered = f.format === 'standard' || (f.format === 'expanded' && LOCAL.series.includes('Black & White')) || (setIds && setIds.length && setIds.every((id) => LOCAL.setIds.has(id)));
+  if (covered) return { cards: [...sortCards(extras, f.sort), ...sortCards(local, f.sort)] };
+  try {
+    const remote = await searchTcgdex(f, []);
+    const seen = new Set(local.map((c) => c.id));
+    const merged = [...local, ...remote.cards.filter((c) => !seen.has(c.id))];
+    return { cards: [...sortCards(extras, f.sort), ...sortCards(merged, f.sort)], capped: remote.capped };
+  } catch (e) {
+    return { cards: [...sortCards(extras, f.sort), ...sortCards(local, f.sort)],
+      note: `Showing cards from the saved card data (${LOCAL.series.join(' and ')} eras). Older cards need the online card database, which isn’t available right now (${e.message})` };
+  }
+}
+async function searchTcgdex(f, extras) {
   const tf = {};
   if (f.q.trim()) tf.name = cleanFilter(f.q);
   if (f.kind !== 'all') tf.category = `eq:${KIND[f.kind]}`;
@@ -515,7 +569,6 @@ async function searchCards(f) {
   if (f.mark.trim()) tf.regulationMark = 'eq:' + markList(f.mark).join('|');
   if (f.rarity.trim()) tf.rarity = cleanFilter(f.rarity);
   if (f.artist.trim()) tf.illustrator = cleanFilter(f.artist);
-  const extras = EXTRA_CARDS.filter((c) => matchesFilters(c, f, { skipFormat: true }) && (f.q.trim() || f.set.trim() || f.text.trim()));
   if (!Object.keys(tf).length && !f.text.trim()) return { cards: extras, needMore: !extras.length };
   if (!Object.keys(tf).length) throw new Error('Card text search needs at least one other filter, like a name, type, set or regulation mark.');
   const raw = await fetchCardsPaged(tf, 1000);
@@ -662,6 +715,7 @@ async function createFirebaseStore(code) {
   const fs = await import(FB + 'firebase-firestore.js');
   const app = await getFirebaseApp();
   const db = fs.getFirestore(app);
+  // "deckbrewer" is the app's original name; keep this path so existing shared data stays connected.
   const decksCol = fs.collection(db, 'deckbrewer', code, 'decks');
   const collCol = fs.collection(db, 'deckbrewer', code, 'collection');
   const chatCol = fs.collection(db, 'deckbrewer', code, 'chats');
@@ -1103,7 +1157,7 @@ function DeckView({ deck, collection, stats, onOpen, onImport }) {
 }
 
 /* ---------- Advanced search panel (Find cards and Card Library) ---------- */
-const SET_CODE_LIST = Object.keys(SET_CODES).filter((c) => !c.includes(':')).sort();
+const setCodeList = () => Object.keys(SET_CODES).filter((c) => !c.includes(':')).sort();
 function CardFilters({ f, setF, onSearch, busy, library, resultCount }) {
   const [open, setOpen] = useState(activeAdvanced(f) > 0);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
@@ -1133,7 +1187,7 @@ function CardFilters({ f, setF, onSearch, busy, library, resultCount }) {
         <input aria-label="Minimum HP" inputmode="numeric" placeholder="min" value=${f.hpMin} onInput=${set('hpMin')} />
         <span>to</span><input aria-label="Maximum HP" inputmode="numeric" placeholder="max" value=${f.hpMax} onInput=${set('hpMax')} /></div></div>
       <div class="fld"><label for="fset">Set code</label><input id="fset" list="setcodes" value=${f.set} onInput=${set('set')} placeholder="TWM, MEG…" />
-        <datalist id="setcodes">${SET_CODE_LIST.map((c) => html`<option value=${c} />`)}</datalist></div>
+        <datalist id="setcodes">${setCodeList().map((c) => html`<option value=${c} />`)}</datalist></div>
       <div class="fld"><label for="fm">Regulation mark</label><input id="fm" value=${f.mark} onInput=${set('mark')} placeholder="H I J" /></div>
       <div class="fld"><label for="fr">Rarity</label><input id="fr" value=${f.rarity} onInput=${set('rarity')} placeholder="Rare, Illustration…" /></div>
       <div class="fld"><label for="fa">Artist</label><input id="fa" value=${f.artist} onInput=${set('artist')} /></div>
@@ -1154,7 +1208,7 @@ function SearchView({ onOpen, onAddDeck, onAddOwned, ownedOf, deckCountOf, onAdd
     setSt((s) => ({ ...s, busy: true, error: null }));
     try {
       const d = await searchCards({ ...blankFilters(), ...f });
-      setSt({ cards: d.cards, shown: PAGE, busy: false, error: null, searched: true, capped: !!d.capped, needMore: !!d.needMore });
+      setSt({ cards: d.cards, shown: PAGE, busy: false, error: null, searched: true, capped: !!d.capped, needMore: !!d.needMore, note: d.note || '' });
     } catch (e) { setSt((s) => ({ ...s, busy: false, error: e.message })); }
   }
   // Coming back to this tab re-runs the last search so results aren't lost.
@@ -1164,7 +1218,8 @@ function SearchView({ onOpen, onAddDeck, onAddOwned, ownedOf, deckCountOf, onAdd
     <${CardFilters} f=${{ ...blankFilters(), ...f }} setF=${setF} onSearch=${search} busy=${st.busy} resultCount=${st.searched && !st.busy ? st.cards.length : null} />
     ${st.error && html`<p class="warn">${st.error}</p>`}
     ${st.needMore && html`<p class="empty">Add a name or at least one filter (type, set, stage…) to search.</p>`}
-    ${st.capped && html`<p class="small muted">Showing matches from the first 1,000 results. Add a filter to narrow it down.</p>`}
+    ${st.capped && html`<p class="small muted">Showing matches from the first 1,000 online results. Add a filter to narrow it down.</p>`}
+    ${st.note && html`<p class="small muted">${st.note}</p>`}
     ${st.searched && !st.cards.length && !st.busy && !st.needMore && !st.error && html`<p class="empty">No cards match. Check the spelling, or loosen a filter (like Standard legal).</p>`}
     ${st.searched && !st.busy && html`<p class="small muted">Can’t find a card? <button class="linkbtn" onClick=${() => onAddExtra(f.q.trim())}>Add a missing card</button></p>`}
     <div class="grid wide">${visible.map((c) => html`<${CardTile} key=${c.id} card=${c} onOpen=${onOpen}>
@@ -1196,7 +1251,7 @@ function CollectionView({ collection, store, onOpen }) {
   function backup() {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(collection)], { type: 'application/json' }));
-    a.download = `deck-brewer-collection-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    a.download = `deck-brews-collection-${new Date().toISOString().slice(0, 10)}.json`; a.click();
   }
   function restore(file) {
     const r = new FileReader();
@@ -1205,7 +1260,7 @@ function CollectionView({ collection, store, onOpen }) {
         const obj = JSON.parse(r.result);
         if (!confirm(`Replace the shared collection with the ${Object.keys(obj).length} cards in this backup?`)) return;
         await store.replaceCollection(obj);
-      } catch { alert('That file isn’t a Deck Brewer backup.'); }
+      } catch { alert('That file isn’t a Deck Brews backup.'); }
     };
     r.readAsText(file);
   }
@@ -1427,7 +1482,7 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
 }
 
 /* ---------- Settings and family code ---------- */
-function Settings({ mode, notes, onSaveNotes, onClose, onDisconnect, theme, onTheme }) {
+function Settings({ mode, notes, onSaveNotes, onClose, onDisconnect, theme, onTheme, localInfo }) {
   const [draft, setDraft] = useState(notes || '');
   const [saved, setSaved] = useState(false);
   useEscape(onClose);
@@ -1452,7 +1507,9 @@ function Settings({ mode, notes, onSaveNotes, onClose, onDisconnect, theme, onTh
       <hr class="divider" />
       <p class="small">${mode === 'firebase' ? html`<b>Shared with Firebase.</b> Decks, cards, chats and coach notes sync across your devices.` : 'Saved on this device only. Fill in firebase-config.js to share across devices.'}</p>
       <p class="small">${COACH_READY ? html`<b>Deck coach is on</b> (Google Gemini, free tier: ${currentCoachModel()}).` : 'Deck coach is off until AI Logic and App Check are set up (SETUP.md, step 2). Copy for Claude still works.'}</p>
-      <p class="small">Card data and images come from <a href="https://tcgdex.dev" target="_blank" rel="noopener">TCGdex</a>, a free, open-source card database.</p>
+      <p class="small">Card data and images come from <a href="https://tcgdex.dev" target="_blank" rel="noopener">TCGdex</a>, a free, open-source card database.
+        ${localInfo ? html` <b>Saved card data:</b> ${localInfo.cards.length.toLocaleString()} cards, updated ${localInfo.updated} (refreshed weekly).`
+          : ' The saved copy of the card data hasn’t been created yet, so cards load live from TCGdex (see SETUP.md, step 5).'}</p>
       <div class="row" style="margin-top:16px">
         <button class="btn ghost" onClick=${onClose}>Close</button>
         ${mode === 'firebase' && html`<button class="btn ghost danger" onClick=${onDisconnect}>Forget family code</button>`}
@@ -1464,7 +1521,7 @@ function Settings({ mode, notes, onSaveNotes, onClose, onDisconnect, theme, onTh
 function Connect({ onConnect, error, busy }) {
   const [code, setCode] = useState(''), [show, setShow] = useState(false);
   return html`<form class="connect" onSubmit=${(e) => { e.preventDefault(); code.trim() && onConnect(code.trim().toLowerCase()); }}>
-    <h1>Deck Brewer</h1>
+    <h1>Deck Brews</h1>
     <p class="muted">Enter your family code to open your shared decks and cards.</p>
     <label for="fc">Family code</label>
     <div class="pw"><input id="fc" type=${show ? 'text' : 'password'} value=${code} onInput=${(e) => setCode(e.target.value)} autocapitalize="off" autocomplete="off" spellcheck="false" />
@@ -1499,6 +1556,8 @@ function App() {
   const [settings, setSettings] = useState(false);
   const [nameDraft, setNameDraft] = useState(null);
   const [theme, setTheme] = usePref('db.theme', 'system');
+  const [localInfo, setLocalInfo] = useState(LOCAL);
+  useEffect(() => { localReady.then((l) => setLocalInfo(l)); }, []);
   useEffect(() => applyTheme(theme), [theme]);
   const isDark = theme === 'dark' || (theme === 'system' && systemDark());
   const [extraForm, setExtraForm] = useState(null);
@@ -1603,7 +1662,7 @@ function App() {
 
   return html`<div class="app">
     <header class="top">
-      <div class="brand">Deck Brewer</div>
+      <div class="brand">Deck Brews</div>
       <div class="deckpick">
         <select value=${deck.id} onChange=${(e) => setActiveId(e.target.value)} aria-label="Choose a deck">
           ${decks.map((d) => html`<option value=${d.id}>${d.name}</option>`)}
@@ -1648,7 +1707,7 @@ function App() {
       onDeleteExtra=${(c) => { if (confirm(`Remove “${c.name}” from the extra cards? Decks that use it keep their copy.`)) { store.deleteCustomCard(c.id); setModalCard(null); } }} />`}
     ${extraForm && html`<${ExtraCardForm} initialName=${extraForm.name} onClose=${() => setExtraForm(null)}
       onSave=${(c) => { store.saveCustomCard(c); setExtraForm(null); setModalCard(c); }} />`}
-    ${settings && html`<${Settings} mode=${store.mode} theme=${theme} onTheme=${setTheme} notes=${data.coachNotes || ''} onSaveNotes=${(t) => store.saveCoachNotes(t)} onClose=${() => setSettings(false)}
+    ${settings && html`<${Settings} mode=${store.mode} theme=${theme} onTheme=${setTheme} localInfo=${localInfo} notes=${data.coachNotes || ''} onSaveNotes=${(t) => store.saveCoachNotes(t)} onClose=${() => setSettings(false)}
       onDisconnect=${() => { setSettings(false); setStore(null); setData({ decks: {}, collection: {}, loaded: false }); setCode(''); }} />`}
   </div>`;
 }

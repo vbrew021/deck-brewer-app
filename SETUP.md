@@ -1,17 +1,21 @@
-# Deck Brewer setup
+# Deck Brews setup
 
-Deck Brewer runs on GitHub Pages and keeps your decks and cards in Firebase,
+Deck Brews runs on GitHub Pages and keeps your decks and cards in Firebase,
 so everyone in the family sees the same decks and cards on every device.
-Everything here is free: no credit card, no API keys to buy. Card data and
+Everything here is free: no credit card, no API keys to buy.
+
+(The app was first called Deck Brewer. If your repository or Firebase project
+uses that name, keep it; the names are just labels. The Firestore data path
+stays `deckbrewer` on purpose, so don't change it in the rules.) Card data and
 images come from TCGdex (https://tcgdex.dev), a free, open-source card
 database that needs no sign-up.
 
 ## 1. Create a Firebase project (about 5 minutes)
 
-A new project keeps Deck Brewer's rules separate from anything else you run.
+A new project keeps Deck Brews' rules separate from anything else you run.
 
 1. Go to https://console.firebase.google.com and click **Create a project**.
-   Name it something like "deck-brewer". Google Analytics isn't needed.
+   Name it something like "deck-brews". Google Analytics isn't needed.
 2. Open **Build → Firestore Database → Create database**. Pick a location
    near you (us-central is fine) and start in **production mode**.
 3. Open the **Rules** tab. Select everything, delete it, and paste in the
@@ -50,7 +54,7 @@ Nobody ever has to solve a puzzle.
 **Create a reCAPTCHA key**
 
 4. Go to https://www.google.com/recaptcha/admin/create.
-   - Label: "Deck Brewer"
+   - Label: "Deck Brews"
    - Type: **Score based (v3)**
    - Domains: `YOUR-NAME.github.io` (your GitHub username; see step 3)
    - If Google asks for a Google Cloud project, pick your Firebase project.
@@ -84,18 +88,58 @@ Good to know:
 
 ## 3. Put it on GitHub Pages
 
-1. Create a new repository on GitHub (for example `deck-brewer`). Public is
+1. Create a new repository on GitHub (for example `deck-brews`). Public is
    fine; nothing secret is in these files.
 2. Upload `index.html`, `firebase-config.js`, `firestore.rules`, `SETUP.md`,
    `CHANGELOG.md` and `APP-GUIDELINES.md`.
 3. Open **Settings → Pages**. Under **Branch**, choose `main` and `/ (root)`,
    then **Save**. After a minute your site is at
-   `https://YOUR-NAME.github.io/deck-brewer/`.
+   `https://YOUR-NAME.github.io/deck-brews/`.
 
 ## 4. First visit on each device
 
 Open the site and enter the family code. That's it; there's nothing else to
 set up per device.
+
+## 5. Turn on weekly card data (about 10 minutes)
+
+This keeps a copy of the card data in your repository, refreshed every week by
+GitHub, so search is instant and the app keeps working even if TCGdex's
+servers are down. Until you do this, the app loads cards live from TCGdex.
+
+1. **Add the update script.** In your repository, click **Add file → Create
+   new file**. For the name, type `scripts/build-cards.mjs` (typing the `/`
+   creates the folder). Paste in the whole `build-cards.mjs` file and click
+   **Commit changes**.
+2. **Add the workflow.** Click **Add file → Create new file** again. For the
+   name, type `.github/workflows/update-cards.yml`. Paste in the whole
+   `update-cards.yml` file and click **Commit changes**. (Creating it this way
+   avoids trouble uploading folders whose names start with a dot.)
+3. **Let the workflow save files.** Open **Settings → Actions → General**.
+   Under **Workflow permissions**, choose **Read and write permissions** and
+   click **Save**.
+4. **Run it the first time.** Open the **Actions** tab, click **Update card
+   data** on the left, then **Run workflow → Run workflow**. It takes a few
+   minutes. A green check means it worked, and your repository now has a
+   `data/cards.json` file. GitHub Pages updates the site on its own.
+5. **Check it.** Open the app's **Settings**. It should say "Saved card data"
+   with the number of cards and the date.
+
+After that it runs every Monday by itself. You'll see an "Update card data"
+entry in your repository's history whenever cards changed. To pick up a new
+set right away, repeat step 4.
+
+Good to know:
+
+- The saved copy covers every Standard card (the Scarlet & Violet and Mega
+  Evolution eras). Searches set to "Any format" or "Expanded" still ask
+  TCGdex for older cards. To include Expanded sets too, edit
+  `update-cards.yml` and remove the `#` from the two `env` lines (the file
+  gets about three times bigger).
+- If a run fails (a red X), the old copy stays in place, so nothing breaks.
+  Click the run to see what happened, and try again later.
+- GitHub may pause scheduled workflows in repositories with no activity for
+  60 days, and emails you if it does. Turn it back on from the Actions tab.
 
 ## Copy for Claude
 

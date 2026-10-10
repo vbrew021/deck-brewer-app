@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.8.1 (October 10, 2026)
+- Changed: renamed the app from Deck Brewer to Deck Brews.
+- The Firestore data path stays `deckbrewer`, so all saved decks, cards,
+  chats and notes stay connected. No Firebase changes needed.
+
+## 1.8.0 (October 10, 2026)
+- Added: weekly saved card data. A GitHub Action (`update-cards.yml`) runs
+  `scripts/build-cards.mjs` every Monday to save every Standard card from
+  TCGdex into `data/cards.json`. The app searches and imports from this copy
+  first, so it's faster and keeps working if TCGdex is down; it asks TCGdex
+  live only for older cards. New set codes arrive with the data, so new sets
+  work without an app update.
+- Settings shows how many cards are saved and when they were updated.
+- Needs one-time setup: SETUP.md, step 5 (adds two files on GitHub). Until
+  then, the app works as before.
+
 ## 1.7.0 (October 10, 2026)
 - Added: dark mode. It follows your device's setting by default; the moon/sun
   button in the header switches between light and dark, and Settings has a
