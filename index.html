@@ -135,6 +135,9 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .ghosted { aspect-ratio: 63/88; background: #DDE3EE; border-radius: var(--r-sm); display: grid; place-items: center; font-size: 11px; text-align: center; padding: 4px; }
 .composer { display: flex; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--line); align-items: flex-end; }
 .composer textarea { flex: 1; }
+.composer-actions { display: flex; flex-direction: column; gap: 6px; }
+.claude-hint { margin: 0; padding: 0 16px 14px; }
+.claude-hint a { color: var(--trainer); font-weight: 600; }
 
 /* Modal */
 .scrim { position: fixed; inset: 0; background: rgba(16, 22, 44, .6); display: grid; place-items: center; padding: 16px; z-index: 10; }
@@ -172,11 +175,14 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 <div id="app"><div class="loading">Opening your decks…</div></div>
 <script type="module">
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
-import { firebaseConfig } from './firebase-config.js';
+import * as cfg from './firebase-config.js';
 
-const VERSION = '1.0.1';
-const DEFAULT_MODEL = 'claude-sonnet-5-5';
-const FIREBASE_READY = !!(firebaseConfig && firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('PASTE'));
+const VERSION = '1.1.0';
+const firebaseConfig = cfg.firebaseConfig;
+const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
+const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
+const COACH_READY = FIREBASE_READY && filled(cfg.recaptchaSiteKey);
+const GEMINI_MODEL = filled(cfg.geminiModel) ? cfg.geminiModel.trim() : 'gemini-3.8-flash';
 
 /* ---------- Per-device settings ---------- */
 const load = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
@@ -351,11 +357,24 @@ function createLocalStore() {
   };
 }
 
-const FB = 'https://www.gstatic.com/firebasejs/10.14.1/';
+const FB = 'https://www.gstatic.com/firebasejs/12.19.0/';
+let appPromise = null;
+// One Firebase app for the whole page. App Check (invisible reCAPTCHA) starts first so the coach is allowed through.
+function getFirebaseApp() {
+  appPromise ||= (async () => {
+    const { initializeApp, getApps } = await import(FB + 'firebase-app.js');
+    const app = getApps()[0] || initializeApp(firebaseConfig);
+    if (COACH_READY) {
+      const { initializeAppCheck, ReCaptchaV3Provider } = await import(FB + 'firebase-app-check.js');
+      initializeAppCheck(app, { provider: new ReCaptchaV3Provider(cfg.recaptchaSiteKey.trim()), isTokenAutoRefreshEnabled: true });
+    }
+    return app;
+  })();
+  return appPromise;
+}
 async function createFirebaseStore(code) {
-  const { initializeApp, getApps } = await import(FB + 'firebase-app.js');
   const fs = await import(FB + 'firebase-firestore.js');
-  const app = getApps()[0] || initializeApp(firebaseConfig);
+  const app = await getFirebaseApp();
   const db = fs.getFirestore(app);
   const decksCol = fs.collection(db, 'deckbrewer', code, 'decks');
   const collCol = fs.collection(db, 'deckbrewer', code, 'collection');
@@ -395,59 +414,86 @@ async function createFirebaseStore(code) {
   };
 }
 
-/* ---------- Deck coach (Claude API, called from this browser) ---------- */
+/* ---------- Deck coach (Gemini through Firebase AI Logic, free tier) ---------- */
+const RULES_TEXT = `Deck rules: exactly 60 cards, at most 4 copies of any card by name (basic Energy is unlimited), at least one Basic Pokémon, at most 1 ACE SPEC and 1 Radiant Pokémon.`;
+
 const SYSTEM = `You are a friendly, expert Pokémon TCG deck-building coach helping a parent and their kid build 60-card decks.
 
 How you help:
 - Work from the current deck and the cards they own (both given in each message). Prefer cards they already own; when you suggest something they don't own, say so plainly.
 - When they paste or mention a list from Limitless or another site, compare it with their collection, point out what's missing, and suggest realistic substitutes from what they own, explaining the trade-off.
-- Respect the rules: exactly 60 cards, at most 4 copies of any card by name (basic Energy is unlimited), at least one Basic Pokémon, at most 1 ACE SPEC and 1 Radiant Pokémon. Use the format given in the message.
+- Respect the rules. ${RULES_TEXT} Use the format given in the message.
 - Explain the "why" simply enough for a kid to follow: what the deck is trying to do, how the pieces fit together, and how a change affects consistency.
 - Never invent cards. If you aren't sure a card exists or what its set code is, leave setCode and number empty and say you're unsure. Newer cards may be beyond what you know; if a card in their deck or collection is unfamiliar, reason from its name and ask about its text rather than guessing.
 
-Always answer through the deck_advice tool. Keep "reply" conversational and fairly short: short paragraphs, and "- " lines for lists. Put every concrete card change in "suggestions" using Pokémon TCG Live set codes (e.g. TWM, SFA, PAF) and collector numbers. Use an empty list when there's nothing to change.`;
+Answer as JSON matching the schema. Keep "reply" conversational and fairly short: short paragraphs, and "- " lines for lists. Put every concrete card change in "suggestions" using Pokémon TCG Live set codes (e.g. TWM, SFA, PAF) and collector numbers. Use an empty list when there's nothing to change.`;
 
-const TOOL = {
-  name: 'deck_advice',
-  description: 'Your reply to the user, plus any concrete card changes you recommend.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      reply: { type: 'string' },
-      suggestions: { type: 'array', items: { type: 'object', properties: {
-        action: { type: 'string', enum: ['add', 'remove'] }, name: { type: 'string' },
-        setCode: { type: 'string', description: 'PTCGL set code, or empty if unsure.' },
-        number: { type: 'string', description: 'Collector number, or empty if unsure.' },
-        count: { type: 'integer', minimum: 1, maximum: 60 }, reason: { type: 'string', description: 'One short sentence on why.' },
-      }, required: ['action', 'name', 'count', 'reason'] } },
-    },
-    required: ['reply', 'suggestions'],
-  },
-};
+let modelPromise = null;
+function getCoachModel() {
+  modelPromise ||= (async () => {
+    const app = await getFirebaseApp();
+    const { getAI, getGenerativeModel, GoogleAIBackend, Schema } = await import(FB + 'firebase-ai.js');
+    const schema = Schema.object({ properties: {
+      reply: Schema.string(),
+      suggestions: Schema.array({ items: Schema.object({
+        properties: {
+          action: Schema.enumString({ enum: ['add', 'remove'] }), name: Schema.string(),
+          setCode: Schema.string(), number: Schema.string(), count: Schema.integer(), reason: Schema.string(),
+        },
+        optionalProperties: ['setCode', 'number'],
+      }) }),
+    } });
+    return getGenerativeModel(getAI(app, { backend: new GoogleAIBackend() }), {
+      model: GEMINI_MODEL,
+      systemInstruction: SYSTEM,
+      generationConfig: { responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 4000 },
+    });
+  })();
+  modelPromise.catch(() => { modelPromise = null; });
+  return modelPromise;
+}
+
+const deckContext = (deck, collection, format) =>
+  `Format: ${format === 'standard' ? 'Standard' : 'Expanded'}\n\nCurrent deck ("${deck.name}"):\n${deck.entries.length ? exportDecklist(deck.entries) : '(empty)'}\n\nCards we own:\n${collectionText(collection) || '(nothing recorded yet)'}`;
+
+function friendlyCoachError(e) {
+  const m = `${e?.code || ''} ${e?.message || ''}`.toLowerCase();
+  if (/quota|resource.?exhausted|429|rate/.test(m)) return 'The coach has used up its free requests for now. Try again later (the daily limit resets overnight), or use Copy for Claude.';
+  if (/app.?check|recaptcha|attestation|403|permission/.test(m)) return 'Firebase blocked the coach. Check the App Check and reCAPTCHA steps in SETUP.md, including your site’s address in the reCAPTCHA domains.';
+  if (/not.?found|404|model/.test(m)) return `The coach model “${GEMINI_MODEL}” isn’t available. Update geminiModel in firebase-config.js (see SETUP.md).`;
+  if (/api.?not.?enabled|ai logic|firebasevertexai|generativelanguage/.test(m)) return 'AI Logic isn’t turned on for this Firebase project yet. See step 2 in SETUP.md.';
+  if (/network|fetch|offline/.test(m)) return 'Couldn’t reach the coach. Check your internet connection and try again.';
+  return 'The coach couldn’t answer. Try again, or use Copy for Claude.';
+}
 
 async function askCoach({ history, message, deck, collection, format }) {
-  const key = load('db.claudeKey', '');
-  if (!key) throw new Error('Add your Claude API key in Settings to use the coach.');
-  const context = `<format>${format}</format>\n<current_deck name="${deck.name}">\n${exportDecklist(deck.entries) || '(empty)'}\n</current_deck>\n<cards_we_own>\n${collectionText(collection) || '(nothing recorded yet)'}\n</cards_we_own>\n\n${message}`;
-  let res;
+  let result;
   try {
-    res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({
-        model: load('db.model', DEFAULT_MODEL) || DEFAULT_MODEL, max_tokens: 2500, system: SYSTEM,
-        tools: [TOOL], tool_choice: { type: 'tool', name: 'deck_advice' },
-        messages: [...history.slice(-12), { role: 'user', content: context }],
-      }),
-    });
-  } catch { throw new Error('Couldn’t reach Claude. Check your internet connection and try again.'); }
-  const d = await res.json().catch(() => ({}));
-  if (res.status === 401) throw new Error('Claude rejected the API key. Check it in Settings.');
-  if (res.status === 429) throw new Error('Claude is rate-limiting requests right now. Wait a minute and try again.');
-  if (!res.ok) throw new Error(d.error?.message || `Claude returned an error (${res.status}).`);
-  const block = d.content?.find((b) => b.type === 'tool_use');
-  if (!block) throw new Error('The coach returned an empty answer. Try asking again.');
-  return { reply: block.input.reply || '', suggestions: block.input.suggestions || [] };
+    const model = await getCoachModel();
+    result = await model.generateContent({ contents: [
+      ...history.slice(-12).map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+      { role: 'user', parts: [{ text: `${deckContext(deck, collection, format)}\n\n${message}` }] },
+    ] });
+  } catch (e) { console.error(e); throw new Error(friendlyCoachError(e)); }
+  try {
+    const d = JSON.parse(result.response.text().replace(/^```(json)?|```$/g, '').trim());
+    return { reply: d.reply || '', suggestions: Array.isArray(d.suggestions) ? d.suggestions : [] };
+  } catch { throw new Error('The coach’s answer came back garbled. Try asking again.'); }
+}
+
+/* ---------- Copy for Claude (free, no setup) ---------- */
+function claudePrompt({ question, deck, collection, format }) {
+  return `I'm building Pokémon TCG decks with my kid and would love your help.
+
+${question.trim() || 'Please look over our current deck. What are we missing, and what could we use from the cards we own instead?'}
+
+Some context:
+- Prefer cards we already own, and tell us plainly when a suggestion is a card we don't have.
+- ${RULES_TEXT}
+- Explain things simply enough for a kid to follow.
+- When you suggest a full or updated deck, give the complete 60-card list in Pokémon TCG Live format (like "4 Dreepy TWM 128") under "Pokémon:", "Trainer:" and "Energy:" headings, so I can paste it into our deck app.
+
+${deckContext(deck, collection, format)}`;
 }
 
 /* ---------- Small components ---------- */
@@ -657,14 +703,14 @@ const STARTERS = [
   'Explain how this deck wins, in a way a kid can follow.',
   'Build a 60-card deck around a Pokémon we own. Ask me which one first.',
 ];
-function AssistantPanel({ deck, collection, format, onAdd, onRemove, onOpen, onSettings }) {
+function AssistantPanel({ deck, collection, format, onAdd, onRemove, onOpen }) {
   const [messages, setMessages] = useState([]), [input, setInput] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(null);
+  const [copied, setCopied] = useState(false);
   const endRef = useRef(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [messages, busy]);
-  const hasKey = !!load('db.claudeKey', '');
 
   async function send(text) {
-    if (!text.trim() || busy) return;
+    if (!text.trim() || busy || !COACH_READY) return;
     const history = messages.map((m) => ({ role: m.role, content: m.text }));
     setMessages((m) => [...m, { role: 'user', text }]); setInput(''); setBusy(true); setError(null);
     try {
@@ -672,8 +718,8 @@ function AssistantPanel({ deck, collection, format, onAdd, onRemove, onOpen, onS
       let suggestions = d.suggestions;
       if (suggestions.length) {
         let res = [];
-        try { res = await resolveLines(suggestions.map((s) => ({ name: s.name, setCode: s.setCode || '', number: s.number || '', count: s.count }))); } catch {}
-        suggestions = suggestions.map((s, i) => ({ ...s, card: res[i]?.card || null, done: false }));
+        try { res = await resolveLines(suggestions.map((s) => ({ name: s.name, setCode: s.setCode || '', number: s.number || '', count: s.count || 1 }))); } catch {}
+        suggestions = suggestions.map((s, i) => ({ ...s, count: s.count || 1, card: res[i]?.card || null, done: false }));
       }
       setMessages((m) => [...m, { role: 'assistant', text: d.reply, suggestions }]);
     } catch (e) { setError(e.message); setMessages((m) => m.slice(0, -1)); setInput(text); }
@@ -685,11 +731,19 @@ function AssistantPanel({ deck, collection, format, onAdd, onRemove, onOpen, onS
     s.action === 'remove' ? onRemove(s.card, s.count) : onAdd(s.card, s.count);
     setMessages((m) => m.map((msg, i) => (i !== mi ? msg : { ...msg, suggestions: msg.suggestions.map((x, j) => (j === si ? { ...x, done: true } : x)) })));
   }
+  async function copyForClaude() {
+    const text = claudePrompt({ question: input, deck, collection, format });
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 6000); }
+    catch { window.prompt('Copy this, then paste it into Claude:', text); }
+  }
+
   return html`<aside class="assistant">
     <header><h2>Deck coach</h2>${messages.length > 0 && html`<button class="btn ghost small" onClick=${() => setMessages([])}>New chat</button>`}</header>
     <div class="thread" aria-live="polite">
-      ${!hasKey && html`<div class="starters"><p class="muted">The coach needs a Claude API key on this device.</p><button class="btn" onClick=${onSettings}>Add API key</button></div>`}
-      ${hasKey && messages.length === 0 && html`<div class="starters">
+      ${!COACH_READY && html`<div class="starters"><p class="muted">${FIREBASE_READY
+        ? 'The built-in coach turns on once AI Logic and App Check are set up (step 2 in SETUP.md).'
+        : 'The built-in coach needs Firebase set up first (see SETUP.md).'} Until then, type a question below and use Copy for Claude.</p></div>`}
+      ${COACH_READY && messages.length === 0 && html`<div class="starters">
         <p class="muted">Ask about “${deck.name}”. The coach sees this deck and the cards you own.</p>
         ${STARTERS.map((s) => html`<button class="starter" onClick=${() => send(s)}>${s}</button>`)}
       </div>`}
@@ -712,35 +766,33 @@ function AssistantPanel({ deck, collection, format, onAdd, onRemove, onOpen, onS
       <div ref=${endRef}></div>
     </div>
     <form class="composer" onSubmit=${(e) => { e.preventDefault(); send(input); }}>
-      <textarea rows="3" value=${input} disabled=${!hasKey} placeholder="Ask, or paste a list from Limitless…" aria-label="Message the deck coach"
+      <textarea rows="3" value=${input} placeholder=${COACH_READY ? 'Ask, or paste a list from Limitless…' : 'Type a question for Claude…'} aria-label="Message the deck coach"
         onInput=${(e) => setInput(e.target.value)}
-        onKeyDown=${(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}></textarea>
-      <button class="btn" disabled=${busy || !input.trim() || !hasKey}>Send</button>
+        onKeyDown=${(e) => { if (COACH_READY && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}></textarea>
+      <div class="composer-actions">
+        ${COACH_READY && html`<button class="btn" disabled=${busy || !input.trim()}>Send</button>`}
+        <button type="button" class="btn ghost" onClick=${copyForClaude}>${copied ? 'Copied' : 'Copy for Claude'}</button>
+      </div>
     </form>
+    <p class="claude-hint small muted">${copied
+      ? html`Now paste it into a chat at <a href="https://claude.ai/new" target="_blank" rel="noopener">claude.ai</a>. When Claude gives you a decklist, paste it into Import list.`
+      : 'Copy for Claude copies this deck, your cards and your question so you can ask Claude in its own app.'}</p>
   </aside>`;
 }
 
 /* ---------- Settings and family code ---------- */
 function Settings({ mode, onClose, onDisconnect }) {
-  const [key, setKey] = useState(load('db.claudeKey', '')), [show, setShow] = useState(false);
-  const [model, setModel] = useState(load('db.model', DEFAULT_MODEL));
   const [ptcg, setPtcg] = useState(load('db.ptcgKey', ''));
   useEscape(onClose);
-  function done() { save('db.claudeKey', key.trim()); save('db.model', model.trim() || DEFAULT_MODEL); save('db.ptcgKey', ptcg.trim()); onClose(); }
+  function done() { save('db.ptcgKey', ptcg.trim()); onClose(); }
   return html`<div class="scrim" onClick=${onClose}>
     <div class="modal settings" role="dialog" aria-modal="true" aria-label="Settings" onClick=${(e) => e.stopPropagation()}>
       <h2>Settings</h2>
-      <p class="muted small">These are saved on this device only.</p>
-      <label for="ck">Claude API key</label>
-      <div class="pw"><input id="ck" type=${show ? 'text' : 'password'} value=${key} onInput=${(e) => setKey(e.target.value)} autocomplete="off" placeholder="sk-ant-…" />
-        <button class="btn ghost small" onClick=${() => setShow(!show)}>${show ? 'Hide' : 'Show'}</button></div>
-      <p class="muted small">Create one at console.anthropic.com. Set a monthly spend limit there too.</p>
-      <label for="cm">Claude model</label>
-      <input id="cm" value=${model} onInput=${(e) => setModel(e.target.value)} />
       <label for="pk">Card database key (optional)</label>
       <input id="pk" value=${ptcg} onInput=${(e) => setPtcg(e.target.value)} autocomplete="off" placeholder="From dev.pokemontcg.io" />
-      <p class="muted small">Free. Raises the card lookup limit from 1,000 to 20,000 a day.</p>
+      <p class="muted small">Free. Raises the card lookup limit from 1,000 to 20,000 a day. Saved on this device only.</p>
       <p class="small" style="margin-top:16px">${mode === 'firebase' ? html`<b>Shared with Firebase.</b> Decks and cards sync across your devices.` : 'Saved on this device only. Fill in firebase-config.js to share across devices.'}</p>
+      <p class="small">${COACH_READY ? html`<b>Deck coach is on</b> (Google Gemini, free tier: ${GEMINI_MODEL}).` : 'Deck coach is off until AI Logic and App Check are set up (SETUP.md, step 2). Copy for Claude still works.'}</p>
       <div class="row" style="margin-top:16px">
         <button class="btn" onClick=${done}>Save settings</button>
         <button class="btn ghost" onClick=${onClose}>Cancel</button>
@@ -866,7 +918,7 @@ function App() {
         ${tab === 'collection' && html`<${CollectionView} collection=${collection} store=${store} onOpen=${setModalCard} />`}
       </main>
       <${AssistantPanel} key=${deck.id} deck=${deck} collection=${collection} format=${format}
-        onAdd=${addToDeck} onRemove=${removeFromDeck} onOpen=${setModalCard} onSettings=${() => setSettings(true)} />
+        onAdd=${addToDeck} onRemove=${removeFromDeck} onOpen=${setModalCard} />
     </div>
 
     <p class="foot">Version ${VERSION}. ${store.mode === 'firebase' ? 'Shared with Firebase.' : 'Saved on this device only.'}</p>
