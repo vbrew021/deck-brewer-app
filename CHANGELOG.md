@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.0 (October 10, 2026)
+- Fixed: coach messages no longer overlap or jump around while scrolling.
+- Fixed: the stray "Opening your decks…" text below the page is gone.
+- Added: each deck's coach chat is saved and shared, so you can come back and
+  continue it. New chat clears it.
+- Added: Copy deck, to make another version of a deck (suggests "v2", "v3").
+- Added: Scorching Charcoal (Pokémon TCG Classic, CLC 26) as a built-in extra
+  card, plus "Add a missing card" in Find cards for others the database lacks.
+- Added: Casual format, which skips tournament legality checks.
+- Coach replies now show bold text and bullet lists properly.
+- No Firebase changes needed (new data lives under the existing rules).
+
 ## 1.2.0 (October 10, 2026)
 - Changed: card data and images now come from TCGdex, a free, open-source
   card database, because the Pokémon TCG API (pokemontcg.io) is shutting down.

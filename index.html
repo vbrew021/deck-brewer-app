@@ -123,10 +123,17 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .starters { display: flex; flex-direction: column; gap: 8px; }
 .starter { text-align: left; background: #F2F5FA; border: 0; border-radius: var(--r-md); padding: 10px 12px; cursor: pointer; font-size: 14px; }
 .starter:hover { background: #E5EBF4; }
-.msg { margin: 10px 0; }
-.msg p { margin: 0; white-space: pre-wrap; }
-.msg.user p { background: var(--binder); color: #fff; padding: 9px 12px; border-radius: var(--r-md) var(--r-md) 2px var(--r-md); margin-left: 28px; }
-.msg.assistant p { font-size: 14.5px; }
+.msg { margin: 12px 0; }
+.msg p { margin: 0 0 8px; white-space: pre-wrap; }
+.msg p:last-child { margin-bottom: 0; }
+.msg-user p { background: var(--binder); color: #fff; padding: 9px 12px; border-radius: var(--r-md) var(--r-md) 2px var(--r-md); margin-left: 28px; }
+.msg-coach { font-size: 14.5px; }
+.msg-coach ul { margin: 0 0 8px; padding-left: 20px; }
+.msg-coach li { margin: 2px 0; }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--trainer); font-weight: 600; cursor: pointer; text-decoration: underline; }
+.noimg small { opacity: .8; }
+.noimg.big { display: grid; place-items: center; aspect-ratio: 63 / 88; background: var(--pocket); color: #fff; border-radius: 12px; padding: 12px; text-align: center; font-weight: 600; }
+.chat-note { text-align: center; font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
 .thinking { color: var(--muted); font-style: italic; }
 .suggest { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .sugg { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: start; padding: 8px; border-radius: var(--r-md); background: #F4F6FA; border-left: 4px solid var(--have); }
@@ -177,7 +184,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -276,6 +283,23 @@ async function findByName(raw) {
   return null;
 }
 
+/* ---------- Extra cards TCGdex doesn't have ---------- */
+const extraCard = (c) => ({ supertype: 'Trainer', subtypes: [], types: [], hp: null, evolvesFrom: null, setName: '', regulationMark: null,
+  standard: false, expanded: false, image: null, imageLarge: null, rules: [], abilities: [], attacks: [], releaseDate: '', ...c });
+const BUILT_IN_EXTRAS = [
+  extraCard({
+    id: 'clc-026', name: 'Scorching Charcoal', supertype: 'Trainer', subtypes: ['Pokémon Tool'],
+    setCode: 'CLC', setName: 'Pokémon Trading Card Game Classic (Charizard)', number: '26', releaseDate: '2023-11-17',
+    image: 'https://tcgplayer-cdn.tcgplayer.com/product/527972_in_400x400.jpg',
+    imageLarge: 'https://tcgplayer-cdn.tcgplayer.com/product/527972_in_1000x1000.jpg',
+    rules: ['The attacks used by the Charizard this card is attached to do 100 more damage to your opponent’s Active Pokémon (before applying Weakness and Resistance).', '(This card cannot be used at official tournaments.)'],
+    builtIn: true,
+  }),
+];
+let EXTRA_CARDS = [...BUILT_IN_EXTRAS]; // the App adds the family's own cards to this list
+const extraByCode = (code, number) => EXTRA_CARDS.find((c) => c.setCode && code && c.setCode.toUpperCase() === code.toUpperCase() && stripZeros(c.number) === stripZeros(number || ''));
+const extraByName = (name) => { const n = normName(name).toLowerCase(); return EXTRA_CARDS.find((c) => c.name.toLowerCase() === n); };
+
 async function resolveLines(lines) {
   const cands = lines.map((l) => candidateIds(l.setCode, l.number));
   const ids = [...new Set(cands.flat())];
@@ -285,8 +309,8 @@ async function resolveLines(lines) {
   }
   const out = [];
   for (let i = 0; i < lines.length; i++) {
-    let card = cands[i].map((id) => found[id]).find(Boolean) || null;
-    if (!card && lines[i].name) card = await findByName(lines[i].name);
+    let card = extraByCode(lines[i].setCode, lines[i].number) || cands[i].map((id) => found[id]).find(Boolean) || null;
+    if (!card && lines[i].name) card = extraByName(lines[i].name) || await findByName(lines[i].name);
     out.push({ ...lines[i], card });
   }
   return out;
@@ -294,6 +318,12 @@ async function resolveLines(lines) {
 
 const KIND = { pokemon: 'Pokemon', trainer: 'Trainer', energy: 'Energy' };
 async function searchCards({ q, kind, standard }) {
+  const ql = (q || '').toLowerCase();
+  const extras = EXTRA_CARDS.filter((c) => (!ql || c.name.toLowerCase().includes(ql)) && (kind === 'all' || sectionOf(c) === kind));
+  const tcg = await searchTcgdex({ q, kind, standard });
+  return { cards: [...extras.sort(newestFirst), ...tcg.cards] };
+}
+async function searchTcgdex({ q, kind, standard }) {
   const f = {};
   if (q) f.name = cleanFilter(q);
   if (kind !== 'all') f.category = `eq:${KIND[kind]}`;
@@ -385,13 +415,20 @@ const collectionText = (coll) => Object.values(coll).sort((a, b) => a.card.name.
   .map((e) => `${e.count} ${e.card.name} ${e.card.setCode} ${e.card.number}`).join('\n');
 
 /* ---------- Storage: Firebase (shared) or this device only ---------- */
+const cleanForSave = (v) => JSON.parse(JSON.stringify(v)); // Firestore can't store undefined
 function createLocalStore() {
-  let decks = load('db.local.decks', {}), coll = load('db.local.collection', {});
+  let decks = load('db.local.decks', {}), coll = load('db.local.collection', {}), custom = load('db.local.custom', {});
   const subs = [];
-  const emit = () => { save('db.local.decks', decks); save('db.local.collection', coll); subs.forEach((f) => f({ decks: { ...decks }, collection: { ...coll }, loaded: true })); };
+  const snapshot = () => ({ decks: { ...decks }, collection: { ...coll }, customCards: { ...custom }, loaded: true });
+  const emit = () => { save('db.local.decks', decks); save('db.local.collection', coll); save('db.local.custom', custom); subs.forEach((f) => f(snapshot())); };
   return {
     mode: 'local',
-    subscribe(f) { subs.push(f); f({ decks: { ...decks }, collection: { ...coll }, loaded: true }); return () => {}; },
+    subscribe(f) { subs.push(f); f(snapshot()); return () => {}; },
+    loadChat: async (deckId) => load('db.local.chat.' + deckId, []),
+    saveChat: async (deckId, messages) => save('db.local.chat.' + deckId, cleanForSave(messages)),
+    deleteChat: async (deckId) => { try { localStorage.removeItem('db.local.chat.' + deckId); } catch {} },
+    saveCustomCard(card) { custom[card.id] = cleanForSave(card); emit(); },
+    deleteCustomCard(id) { delete custom[id]; emit(); },
     saveDeck(d) { decks[d.id] = d; emit(); },
     deleteDeck(id) { delete decks[id]; emit(); },
     setOwned(card, count) { if (count <= 0) delete coll[card.id]; else coll[card.id] = { card, count }; emit(); },
@@ -421,6 +458,8 @@ async function createFirebaseStore(code) {
   const db = fs.getFirestore(app);
   const decksCol = fs.collection(db, 'deckbrewer', code, 'decks');
   const collCol = fs.collection(db, 'deckbrewer', code, 'collection');
+  const chatCol = fs.collection(db, 'deckbrewer', code, 'chats');
+  const customCol = fs.collection(db, 'deckbrewer', code, 'customCards');
   try { await fs.getDocs(fs.query(decksCol, fs.limit(1))); }
   catch (e) {
     if (e.code === 'permission-denied') throw new Error('That family code didn’t match. Check it against the code in your Firebase rules.');
@@ -436,13 +475,19 @@ async function createFirebaseStore(code) {
   return {
     mode: 'firebase',
     subscribe(f, onError) {
-      let state = { decks: {}, collection: {}, loaded: false }, gotDecks = false, gotColl = false;
+      let state = { decks: {}, collection: {}, customCards: {}, loaded: false }, gotDecks = false, gotColl = false;
       const push = () => f({ ...state, loaded: gotDecks && gotColl });
       const err = () => onError?.('Lost the connection to Firebase. Changes will sync when it’s back.');
       const u1 = fs.onSnapshot(decksCol, (s) => { const d = {}; s.forEach((x) => (d[x.id] = x.data())); state = { ...state, decks: d }; gotDecks = true; push(); }, err);
       const u2 = fs.onSnapshot(collCol, (s) => { const c = {}; s.forEach((x) => (c[x.id] = x.data())); state = { ...state, collection: c }; gotColl = true; push(); }, err);
-      return () => { u1(); u2(); };
+      const u3 = fs.onSnapshot(customCol, (s) => { const c = {}; s.forEach((x) => (c[x.id] = x.data())); state = { ...state, customCards: c }; push(); }, () => {});
+      return () => { u1(); u2(); u3(); };
     },
+    async loadChat(deckId) { const d = await fs.getDoc(fs.doc(chatCol, deckId)); return d.exists() ? d.data().messages || [] : []; },
+    saveChat: (deckId, messages) => fs.setDoc(fs.doc(chatCol, deckId), { messages: cleanForSave(messages), updatedAt: Date.now() }),
+    deleteChat: (deckId) => fs.deleteDoc(fs.doc(chatCol, deckId)),
+    saveCustomCard: (card) => fs.setDoc(fs.doc(customCol, card.id), cleanForSave(card)),
+    deleteCustomCard: (id) => fs.deleteDoc(fs.doc(customCol, id)),
     saveDeck: (d) => fs.setDoc(fs.doc(decksCol, d.id), d),
     deleteDeck: (id) => fs.deleteDoc(fs.doc(decksCol, id)),
     setOwned: (card, count) => (count <= 0 ? fs.deleteDoc(fs.doc(collCol, card.id)) : fs.setDoc(fs.doc(collCol, card.id), { card, count })),
@@ -458,6 +503,7 @@ async function createFirebaseStore(code) {
 }
 
 /* ---------- Deck coach (Gemini through Firebase AI Logic, free tier) ---------- */
+const formatName = (f) => (f === 'standard' ? 'Standard' : f === 'expanded' ? 'Expanded' : 'Casual (home games: any cards allowed, including non-tournament cards)');
 const RULES_TEXT = `Deck rules: exactly 60 cards, at most 4 copies of any card by name (basic Energy is unlimited), at least one Basic Pokémon, at most 1 ACE SPEC and 1 Radiant Pokémon.`;
 
 const SYSTEM = `You are a friendly, expert Pokémon TCG deck-building coach helping a parent and their kid build 60-card decks.
@@ -497,7 +543,7 @@ function getCoachModel() {
 }
 
 const deckContext = (deck, collection, format) =>
-  `Format: ${format === 'standard' ? 'Standard' : 'Expanded'}\n\nCurrent deck ("${deck.name}"):\n${deck.entries.length ? exportDecklist(deck.entries) : '(empty)'}\n\nCards we own:\n${collectionText(collection) || '(nothing recorded yet)'}`;
+  `Format: ${formatName(format)}\n\nCurrent deck ("${deck.name}"):\n${deck.entries.length ? exportDecklist(deck.entries) : '(empty)'}\n\nCards we own:\n${collectionText(collection) || '(nothing recorded yet)'}`;
 
 function friendlyCoachError(e) {
   const m = `${e?.code || ''} ${e?.message || ''}`.toLowerCase();
@@ -542,11 +588,19 @@ ${deckContext(deck, collection, format)}`;
 /* ---------- Small components ---------- */
 function ownState(count, owned) { return owned >= count ? 'have' : owned > 0 ? 'short' : 'need'; }
 
+// Shows the card picture, or the card name if there's no picture or it fails to load.
+function CardImage({ card, large }) {
+  const [failed, setFailed] = useState(false);
+  const src = large ? card.imageLarge || card.image : card.image;
+  if (!src || failed) return html`<span class=${large ? 'noimg big' : 'noimg'}>${card.name}${card.setCode ? html`<br /><small>${card.setCode} ${card.number}</small>` : ''}</span>`;
+  return html`<img class=${large ? 'modal-img' : ''} src=${src} alt=${large ? card.name : ''} loading="lazy" onError=${() => setFailed(true)} />`;
+}
+
 function CardTile({ card, count, owned, onOpen, children }) {
   const st = count != null && owned != null ? ownState(count, owned) : null;
   return html`<div class="tile">
     <button class="pocket" onClick=${() => onOpen?.(card)} aria-label=${`${card.name}, ${card.setCode} ${card.number}`}>
-      ${card.image ? html`<img src=${card.image} alt="" loading="lazy" />` : html`<span class="noimg">${card.name}</span>`}
+      <${CardImage} card=${card} />
       ${count != null && html`<span class="qty">${count}</span>`}
       ${st && html`<span class=${`own own-${st}`} title=${`We own ${owned} of ${count}`}>${st === 'have' ? 'Owned' : `Need ${count - owned}`}</span>`}
     </button>
@@ -567,15 +621,15 @@ function useEscape(onClose) {
   useEffect(() => { const k = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
 }
 
-function CardModal({ card, deckCount, ownedExact, onDeck, onOwned, onClose }) {
+function CardModal({ card, deckCount, ownedExact, onDeck, onOwned, onClose, onDeleteExtra }) {
   useEscape(onClose);
   return html`<div class="scrim" onClick=${onClose}>
     <div class="modal" role="dialog" aria-modal="true" aria-label=${card.name} onClick=${(e) => e.stopPropagation()}>
-      <img class="modal-img" src=${card.imageLarge || card.image} alt=${card.name} />
+      <${CardImage} card=${card} large=${true} />
       <div class="modal-body">
         <h2>${card.name}</h2>
         <p class="muted">${card.setName} (${card.setCode} ${card.number})${card.regulationMark ? `, mark ${card.regulationMark}` : ''}</p>
-        <p class=${card.standard ? 'legal ok' : 'legal no'}>${card.standard ? 'Legal in Standard' : 'Not legal in Standard'}</p>
+        <p class=${card.standard ? 'legal ok' : 'legal no'}>${card.standard ? 'Legal in Standard' : 'Not legal in Standard'}${card.builtIn || card.custom ? ' (extra card, fine for Casual games)' : ''}</p>
         ${card.abilities.map((a) => html`<div class="cardtext"><strong>Ability: ${a.name}</strong><p>${a.text}</p></div>`)}
         ${card.attacks.map((a) => html`<div class="cardtext"><strong>${a.name}${a.damage ? ` ${a.damage}` : ''}</strong>${a.text && html`<p>${a.text}</p>`}</div>`)}
         ${sectionOf(card) !== 'pokemon' && card.rules.map((r) => html`<p class="cardtext">${r}</p>`)}
@@ -583,7 +637,58 @@ function CardModal({ card, deckCount, ownedExact, onDeck, onOwned, onClose }) {
           <${Stepper} label="In this deck" value=${deckCount} onChange=${onDeck} max=${60} />
           <${Stepper} label="We own (this print)" value=${ownedExact} onChange=${onOwned} />
         </div>
-        <button class="btn ghost" onClick=${onClose}>Close</button>
+        <div class="row">
+          <button class="btn ghost" onClick=${onClose}>Close</button>
+          ${card.custom && html`<button class="btn ghost danger" onClick=${() => onDeleteExtra(card)}>Remove this extra card</button>`}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// Form for adding a card TCGdex doesn't have (non-tournament cards, very new cards).
+const DETAIL_OPTIONS = { Pokémon: ['Basic', 'Stage 1', 'Stage 2'], Trainer: ['Item', 'Supporter', 'Pokémon Tool', 'Stadium'], Energy: ['Basic', 'Special'] };
+function ExtraCardForm({ initialName, onSave, onClose }) {
+  const [f, setF] = useState({ name: initialName || '', supertype: 'Trainer', detail: 'Item', hp: '', setCode: '', number: '', image: '', text: '', standard: false });
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
+  useEscape(onClose);
+  function save() {
+    if (!f.name.trim()) return;
+    const card = extraCard({
+      id: 'custom-' + makeId(), name: f.name.trim(), supertype: f.supertype, subtypes: [f.detail],
+      hp: f.supertype === 'Pokémon' && f.hp ? Number(f.hp) : null,
+      setCode: f.setCode.trim().toUpperCase(), number: f.number.trim(), setName: 'Added by us',
+      image: f.image.trim() || null, imageLarge: f.image.trim() || null,
+      rules: f.supertype !== 'Pokémon' && f.text.trim() ? [f.text.trim()] : [],
+      attacks: f.supertype === 'Pokémon' && f.text.trim() ? [{ name: 'Card text', cost: [], damage: '', text: f.text.trim() }] : [],
+      standard: f.standard, expanded: f.standard, custom: true, releaseDate: new Date().toISOString().slice(0, 10),
+    });
+    onSave(card);
+  }
+  return html`<div class="scrim" onClick=${onClose}>
+    <div class="modal settings" role="dialog" aria-modal="true" aria-label="Add a missing card" onClick=${(e) => e.stopPropagation()}>
+      <h2>Add a missing card</h2>
+      <p class="muted small">For cards the card database doesn’t have, like non-tournament cards. Everyone in the family will see it.</p>
+      <label for="xn">Card name</label><input id="xn" value=${f.name} onInput=${set('name')} />
+      <div class="row">
+        <div style="flex:1"><label for="xt">Card type</label>
+          <select id="xt" value=${f.supertype} onChange=${(e) => setF((x) => ({ ...x, supertype: e.target.value, detail: DETAIL_OPTIONS[e.target.value][0] }))}>
+            ${Object.keys(DETAIL_OPTIONS).map((t) => html`<option value=${t}>${t}</option>`)}
+          </select></div>
+        <div style="flex:1"><label for="xd">Kind</label>
+          <select id="xd" value=${f.detail} onChange=${set('detail')}>${DETAIL_OPTIONS[f.supertype].map((t) => html`<option value=${t}>${t}</option>`)}</select></div>
+      </div>
+      ${f.supertype === 'Pokémon' && html`<label for="xh">HP (optional)</label><input id="xh" inputmode="numeric" value=${f.hp} onInput=${set('hp')} />`}
+      <div class="row">
+        <div style="flex:1"><label for="xs">Set code (optional)</label><input id="xs" value=${f.setCode} onInput=${set('setCode')} placeholder="CLC" /></div>
+        <div style="flex:1"><label for="xnum">Number (optional)</label><input id="xnum" value=${f.number} onInput=${set('number')} placeholder="26" /></div>
+      </div>
+      <label for="xi">Picture link (optional)</label><input id="xi" value=${f.image} onInput=${set('image')} placeholder="https://…" />
+      <label for="xx">Card text (optional)</label><textarea id="xx" rows="3" value=${f.text} onInput=${set('text')}></textarea>
+      <label class="check" style="margin-top:12px"><input type="checkbox" checked=${f.standard} onChange=${set('standard')} /> Legal in tournaments</label>
+      <div class="row" style="margin-top:16px">
+        <button class="btn" disabled=${!f.name.trim()} onClick=${save}>Add card</button>
+        <button class="btn ghost" onClick=${onClose}>Cancel</button>
       </div>
     </div>
   </div>`;
@@ -658,7 +763,7 @@ function DeckView({ deck, collection, stats, onOpen, onImport }) {
 
 /* ---------- Find cards tab ---------- */
 const PAGE = 36;
-function SearchView({ onOpen, onAddDeck, onAddOwned, ownedOf, deckCountOf }) {
+function SearchView({ onOpen, onAddDeck, onAddOwned, ownedOf, deckCountOf, onAddExtra }) {
   const [q, setQ] = useState(''), [kind, setKind] = useState('all'), [standard, setStandard] = useState(true);
   const [st, setSt] = useState({ cards: [], shown: PAGE, busy: false, error: null, searched: false });
   async function search() {
@@ -680,6 +785,7 @@ function SearchView({ onOpen, onAddDeck, onAddOwned, ownedOf, deckCountOf }) {
     </form>
     ${st.error && html`<p class="warn">${st.error}</p>`}
     ${st.searched && !st.cards.length && !st.busy && html`<p class="empty">No cards match. Check the spelling, or turn off “Standard only”.</p>`}
+    ${st.searched && !st.busy && html`<p class="small muted">Can’t find a card? <button class="linkbtn" onClick=${() => onAddExtra(q.trim())}>Add a missing card</button></p>`}
     <div class="grid wide">${visible.map((c) => html`<${CardTile} key=${c.id} card=${c} onOpen=${onOpen}>
       <button class="mini" onClick=${() => onAddDeck(c)}>+ Deck${deckCountOf(c) ? ` (${deckCountOf(c)})` : ''}</button>
       <button class="mini ghost" onClick=${() => onAddOwned(c)}>+ Own${ownedOf(c) ? ` (${ownedOf(c)})` : ''}</button>
@@ -743,21 +849,68 @@ function CollectionView({ collection, store, onOpen }) {
 }
 
 /* ---------- Deck coach ---------- */
+function inline(text) {
+  const out = [];
+  const re = /\*\*([^*]+)\*\*|\*([^*\s][^*]*)\*/g;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(m[1] != null ? html`<strong>${m[1]}</strong>` : html`<em>${m[2]}</em>`);
+    last = re.lastIndex;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+function richText(text) {
+  const blocks = [];
+  let list = null, para = [];
+  const flushPara = () => { if (para.length) { blocks.push(html`<p>${inline(para.join('\n'))}</p>`); para = []; } };
+  const flushList = () => { if (list) { blocks.push(html`<ul>${list.map((li) => html`<li>${inline(li)}</li>`)}</ul>`); list = null; } };
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.trimEnd();
+    const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
+    if (bullet) { flushPara(); (list ||= []).push(bullet[1]); }
+    else if (!line.trim()) { flushPara(); flushList(); }
+    else { flushList(); para.push(line); }
+  }
+  flushPara(); flushList();
+  return blocks;
+}
+
 const STARTERS = [
   'Which cards in this deck are we missing, and what can we use from our collection instead?',
   'Explain how this deck wins, in a way a kid can follow.',
   'Build a 60-card deck around a Pokémon we own. Ask me which one first.',
 ];
-function AssistantPanel({ deck, collection, format, onAdd, onRemove, onOpen }) {
-  const [messages, setMessages] = useState([]), [input, setInput] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(null);
-  const [copied, setCopied] = useState(false);
-  const endRef = useRef(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [messages, busy]);
+const CHAT_LIMIT = 40;
+function AssistantPanel({ deck, collection, format, store, onAdd, onRemove, onOpen }) {
+  const [messages, setMessagesRaw] = useState([]), [input, setInput] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(null);
+  const [copied, setCopied] = useState(false), [chatLoaded, setChatLoaded] = useState(false);
+  const threadRef = useRef(null);
+  // Load this deck's saved chat.
+  useEffect(() => {
+    let live = true;
+    store.loadChat(deck.id).then((m) => { if (live) { setMessagesRaw(Array.isArray(m) ? m : []); setChatLoaded(true); } })
+      .catch(() => live && setChatLoaded(true));
+    return () => { live = false; };
+  }, [deck.id]);
+  // Update the chat and save it (keeps the most recent messages).
+  const setMessages = (fn) => setMessagesRaw((prev) => {
+    const next = (typeof fn === 'function' ? fn(prev) : fn).slice(-CHAT_LIMIT);
+    store.saveChat(deck.id, next).catch(() => {});
+    return next;
+  });
+  // Keep the newest message in view, scrolling only the chat (not the page).
+  useEffect(() => { const t = threadRef.current; if (t) t.scrollTop = t.scrollHeight; }, [messages, busy, chatLoaded]);
+  function newChat() {
+    if (!confirm('Start a new chat? The saved chat for this deck will be cleared.')) return;
+    setMessagesRaw([]); store.deleteChat(deck.id).catch(() => {});
+  }
 
   async function send(text) {
     if (!text.trim() || busy || !COACH_READY) return;
     const history = messages.map((m) => ({ role: m.role, content: m.text }));
-    setMessages((m) => [...m, { role: 'user', text }]); setInput(''); setBusy(true); setError(null);
+    setMessagesRaw((m) => [...m, { role: 'user', text }]); setInput(''); setBusy(true); setError(null);
     try {
       const d = await askCoach({ history, message: text, deck, collection, format });
       let suggestions = d.suggestions;
@@ -767,7 +920,7 @@ function AssistantPanel({ deck, collection, format, onAdd, onRemove, onOpen }) {
         suggestions = suggestions.map((s, i) => ({ ...s, count: s.count || 1, card: res[i]?.card || null, done: false }));
       }
       setMessages((m) => [...m, { role: 'assistant', text: d.reply, suggestions }]);
-    } catch (e) { setError(e.message); setMessages((m) => m.slice(0, -1)); setInput(text); }
+    } catch (e) { setError(e.message); setMessagesRaw((m) => m.slice(0, -1)); setInput(text); }
     finally { setBusy(false); }
   }
   function apply(mi, si) {
@@ -783,17 +936,18 @@ function AssistantPanel({ deck, collection, format, onAdd, onRemove, onOpen }) {
   }
 
   return html`<aside class="assistant">
-    <header><h2>Deck coach</h2>${messages.length > 0 && html`<button class="btn ghost small" onClick=${() => setMessages([])}>New chat</button>`}</header>
-    <div class="thread" aria-live="polite">
+    <header><h2>Deck coach</h2>${messages.length > 0 && html`<button class="btn ghost small" onClick=${newChat}>New chat</button>`}</header>
+    <div class="thread" ref=${threadRef} aria-live="polite">
+      ${messages.length > 0 && html`<p class="chat-note">This chat is saved with “${deck.name}”.</p>`}
       ${!COACH_READY && html`<div class="starters"><p class="muted">${FIREBASE_READY
         ? 'The built-in coach turns on once AI Logic and App Check are set up (step 2 in SETUP.md).'
         : 'The built-in coach needs Firebase set up first (see SETUP.md).'} Until then, type a question below and use Copy for Claude.</p></div>`}
-      ${COACH_READY && messages.length === 0 && html`<div class="starters">
+      ${COACH_READY && chatLoaded && messages.length === 0 && html`<div class="starters">
         <p class="muted">Ask about “${deck.name}”. The coach sees this deck and the cards you own.</p>
         ${STARTERS.map((s) => html`<button class="starter" onClick=${() => send(s)}>${s}</button>`)}
       </div>`}
-      ${messages.map((m, mi) => html`<div class=${`msg ${m.role}`}>
-        <p>${m.text}</p>
+      ${messages.map((m, mi) => html`<div class=${`msg ${m.role === 'user' ? 'msg-user' : 'msg-coach'}`}>
+        ${m.role === 'user' ? html`<p>${m.text}</p>` : richText(m.text)}
         ${m.suggestions?.length > 0 && html`<div class="suggest">${m.suggestions.map((s, si) => html`<div class=${`sugg ${s.action}`}>
           ${s.card ? html`<${CardTile} card=${s.card} onOpen=${onOpen} />` : html`<div class="ghosted">${s.name}</div>`}
           <div class="sugg-body">
@@ -806,9 +960,8 @@ function AssistantPanel({ deck, collection, format, onAdd, onRemove, onOpen }) {
           </div>
         </div>`)}</div>`}
       </div>`)}
-      ${busy && html`<div class="msg assistant thinking">Thinking it over…</div>`}
+      ${busy && html`<div class="msg msg-coach thinking">Thinking it over…</div>`}
       ${error && html`<p class="warn small">${error}</p>`}
-      <div ref=${endRef}></div>
     </div>
     <form class="composer" onSubmit=${(e) => { e.preventDefault(); send(input); }}>
       <textarea rows="3" value=${input} placeholder=${COACH_READY ? 'Ask, or paste a list from Limitless…' : 'Type a question for Claude…'} aria-label="Message the deck coach"
@@ -856,6 +1009,15 @@ function Connect({ onConnect, error, busy }) {
 }
 
 /* ---------- App ---------- */
+// "Charizard" → "Charizard v2"; "Charizard v2" → "Charizard v3", skipping names already used.
+function nextVersionName(name, decks) {
+  const m = name.match(/^(.*?)\s+v(\d+)$/i);
+  const base = m ? m[1] : name;
+  let n = m ? +m[2] + 1 : 2;
+  const used = new Set(decks.map((d) => d.name.toLowerCase()));
+  while (used.has(`${base} v${n}`.toLowerCase())) n++;
+  return `${base} v${n}`;
+}
 const blankDeck = (name) => ({ id: makeId(), name, entries: [], createdAt: Date.now(), updatedAt: Date.now() });
 
 function App() {
@@ -870,6 +1032,7 @@ function App() {
   const [modalCard, setModalCard] = useState(null);
   const [settings, setSettings] = useState(false);
   const [nameDraft, setNameDraft] = useState(null);
+  const [extraForm, setExtraForm] = useState(null);
 
   // Connect to Firebase (or fall back to this device only).
   useEffect(() => {
@@ -930,6 +1093,7 @@ function App() {
   if (!data.loaded || !decks.length) return html`<div class="loading">Opening your decks…</div>`;
 
   const collection = data.collection;
+  EXTRA_CARDS = [...BUILT_IN_EXTRAS, ...Object.values(data.customCards || {})];
   const deck = decks.find((d) => d.id === activeId) || decks[0];
   const stats = analyzeDeck(deck.entries, collection, format);
   const writeDeck = (d) => store.saveDeck({ ...d, updatedAt: Date.now() });
@@ -953,9 +1117,15 @@ function App() {
   const ownedExact = (card) => collection[card.id]?.count || 0;
 
   function newDeck() { const d = blankDeck(`Deck ${decks.length + 1}`); store.saveDeck(d); setActiveId(d.id); setTab('deck'); }
+  function copyDeck() {
+    const name = prompt('Name for the copy:', nextVersionName(deck.name, decks));
+    if (name == null || !name.trim()) return;
+    const d = { ...blankDeck(name.trim()), entries: deck.entries.map((e) => ({ ...e })) };
+    store.saveDeck(d); setActiveId(d.id); setTab('deck');
+  }
   function deleteDeck() {
     if (!confirm(`Delete “${deck.name}” for everyone? This can’t be undone.`)) return;
-    store.deleteDeck(deck.id); setActiveId(decks.find((d) => d.id !== deck.id)?.id || null);
+    store.deleteDeck(deck.id); store.deleteChat(deck.id).catch(() => {}); setActiveId(decks.find((d) => d.id !== deck.id)?.id || null);
   }
   function commitName() {
     if (nameDraft != null && nameDraft.trim() && nameDraft.trim() !== deck.name) writeDeck({ ...deck, name: nameDraft.trim() });
@@ -972,10 +1142,11 @@ function App() {
         <input value=${nameDraft ?? deck.name} onInput=${(e) => setNameDraft(e.target.value)} onBlur=${commitName}
           onKeyDown=${(e) => e.key === 'Enter' && e.target.blur()} aria-label="Deck name" />
         <button class="btn ghost small" onClick=${newDeck}>New deck</button>
+        <button class="btn ghost small" onClick=${copyDeck}>Copy deck</button>
         <button class="btn ghost small danger" onClick=${deleteDeck}>Delete</button>
       </div>
       <select class="format" value=${format} onChange=${(e) => setFormat(e.target.value)} aria-label="Format">
-        <option value="standard">Standard</option><option value="expanded">Expanded</option>
+        <option value="standard">Standard</option><option value="expanded">Expanded</option><option value="casual">Casual (any cards)</option>
       </select>
       <button class="btn ghost small gear" onClick=${() => setSettings(true)}>Settings</button>
     </header>
@@ -990,23 +1161,28 @@ function App() {
     <div class="layout">
       <main>
         ${tab === 'deck' && html`<${DeckView} key=${deck.id} deck=${deck} collection=${collection} stats=${stats} onOpen=${setModalCard} onImport=${importToDeck} />`}
-        ${tab === 'search' && html`<${SearchView} onOpen=${setModalCard} onAddDeck=${(c) => addToDeck(c)} onAddOwned=${(c) => store.setOwned(c, ownedExact(c) + 1)} ownedOf=${ownedExact} deckCountOf=${deckCountOf} />`}
+        ${tab === 'search' && html`<${SearchView} onOpen=${setModalCard} onAddDeck=${(c) => addToDeck(c)} onAddOwned=${(c) => store.setOwned(c, ownedExact(c) + 1)} ownedOf=${ownedExact} deckCountOf=${deckCountOf} onAddExtra=${(name) => setExtraForm({ name })} />`}
         ${tab === 'collection' && html`<${CollectionView} collection=${collection} store=${store} onOpen=${setModalCard} />`}
       </main>
       <${AssistantPanel} key=${deck.id} deck=${deck} collection=${collection} format=${format}
-        onAdd=${addToDeck} onRemove=${removeFromDeck} onOpen=${setModalCard} />
+        store=${store} onAdd=${addToDeck} onRemove=${removeFromDeck} onOpen=${setModalCard} />
     </div>
 
     <p class="foot">Version ${VERSION}. ${store.mode === 'firebase' ? 'Shared with Firebase.' : 'Saved on this device only.'}</p>
 
     ${modalCard && html`<${CardModal} card=${modalCard} deckCount=${deckCountOf(modalCard)} ownedExact=${ownedExact(modalCard)}
-      onDeck=${(n) => setDeckCount(modalCard, n)} onOwned=${(n) => store.setOwned(modalCard, n)} onClose=${() => setModalCard(null)} />`}
+      onDeck=${(n) => setDeckCount(modalCard, n)} onOwned=${(n) => store.setOwned(modalCard, n)} onClose=${() => setModalCard(null)}
+      onDeleteExtra=${(c) => { if (confirm(`Remove “${c.name}” from the extra cards? Decks that use it keep their copy.`)) { store.deleteCustomCard(c.id); setModalCard(null); } }} />`}
+    ${extraForm && html`<${ExtraCardForm} initialName=${extraForm.name} onClose=${() => setExtraForm(null)}
+      onSave=${(c) => { store.saveCustomCard(c); setExtraForm(null); setModalCard(c); }} />`}
     ${settings && html`<${Settings} mode=${store.mode} onClose=${() => setSettings(false)}
       onDisconnect=${() => { setSettings(false); setStore(null); setData({ decks: {}, collection: {}, loaded: false }); setCode(''); }} />`}
   </div>`;
 }
 
-render(html`<${App} />`, document.getElementById('app'));
+const root = document.getElementById('app');
+root.textContent = '';
+render(html`<${App} />`, root);
 </script>
 </body>
 </html>

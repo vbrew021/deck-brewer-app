@@ -30,6 +30,11 @@ an AI coach to find substitutes and understand the deck.
   name search that picks the newest printing.
 - Cards saved before 1.2.0 (pokemontcg.io images) are upgraded once on load
   by `upgradeLegacyCards()`.
+- Extra cards: `BUILT_IN_EXTRAS` holds cards TCGdex lacks (e.g. Scorching
+  Charcoal, CLC 26, a non-tournament Pokémon TCG Classic card). Family-added
+  cards from the "Add a missing card" form are stored in Firestore
+  `customCards`. Both are searched and matched on import before TCGdex.
+- Formats: Standard, Expanded, and Casual (no legality checks).
 - The deck coach uses Gemini through Firebase AI Logic (Gemini Developer API,
   free tier, Spark plan) with App Check using the reCAPTCHA v3 provider.
   Everything must stay free: no billing account, no paid API keys.
@@ -51,17 +56,20 @@ an AI coach to find substitutes and understand the deck.
    Live text format (`4 Dreepy TWM 128` under Pokémon/Trainer/Energy headers).
 6. **Ownership.** Reprints count as owned: same name for Trainers and Energy;
    same name and attack names for Pokémon (`ownedCount()`).
-7. **Coach output.** The coach answers as JSON (reply plus suggestions) using
+7. **Coach chat UI.** Coach messages use the `msg-user` / `msg-coach`
+   classes; never reuse the panel's `assistant` class on messages (that caused
+   overlapping sticky messages in 1.2.0). Replies render via `richText()`.
+8. **Coach output.** The coach answers as JSON (reply plus suggestions) using
    a response schema, so suggestions can be shown as cards with an Add or
    Remove button. It prefers owned cards and must not invent cards. Coach
    errors map to plain messages in `friendlyCoachError()`.
-8. **Kid-friendly copy.** Plain words, sentence case, errors that say what to
+9. **Kid-friendly copy.** Plain words, sentence case, errors that say what to
    do next.
-9. **Design.** Cool page background, navy binder sheets for deck sections
+10. **Design.** Cool page background, navy binder sheets for deck sections
    with section colors (Pokémon purple, Trainers blue, Energy gold), Bricolage
    Grotesque headings and Lexend body text, visible focus outlines, works on
    phones.
-10. **Update everywhere.** Each release updates `index.html`, `CHANGELOG.md`,
+11. **Update everywhere.** Each release updates `index.html`, `CHANGELOG.md`,
     and `SETUP.md` when instructions change. Remind the user to upload to
     GitHub and check the version label.
 
@@ -71,3 +79,6 @@ an AI coach to find substitutes and understand the deck.
   Whole-deck writes; if two people edit the same deck at the same moment,
   the last save wins.
 - `collection/{cardId}`: `{ card, count }`, one document per printing.
+- `chats/{deckId}`: `{ messages, updatedAt }`, the coach chat saved with each
+  deck (last 40 messages). Deleted with its deck; not copied by Copy deck.
+- `customCards/{id}`: family-added extra cards (ids start with `custom-`).
