@@ -5,7 +5,7 @@ service cloud.firestore {
     // Your family code, in lowercase, between the quotes:
     function familyCode() { return 'change-me'; }
 
-    match /deckbinder/{code}/{document=**} {
+    match /deckbrewer/{code}/{document=**} {
       allow read, write: if code == familyCode();
     }
   }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1 (October 10, 2026)
+- Changed: renamed the app from Deck Binder to Deck Brewer.
+- Changed: shared data now lives under `deckbrewer/` in Firestore.
+- Needs updated Firebase rules (new data path).
+
 ## 1.0.0 (October 10, 2026)
 - First GitHub Pages release, rebuilt from the Next.js version.
 - Added: decks and the card collection are shared through Firebase, using a

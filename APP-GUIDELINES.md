@@ -1,4 +1,4 @@
-# Deck Binder: guidelines for future changes
+# Deck Brewer: guidelines for future changes
 
 Attach this file with the current `index.html` (and `firestore.rules` if
 Firebase might change) when starting a new chat about the app, and ask Claude
@@ -14,7 +14,7 @@ an AI coach to find substitutes and understand the deck.
 
 - `index.html` on GitHub Pages; one file with inline CSS and JavaScript
   (Preact + htm from unpkg, Firebase 10.14.1 from gstatic). No build step.
-- Shared data in Firestore under `deckbinder/{familyCode}/`. The code is
+- Shared data in Firestore under `deckbrewer/{familyCode}/`. The code is
   entered on the first visit, lowercased, and checked by `firestore.rules`.
 - Card data comes straight from pokemontcg.io in the browser.
 - The coach calls the Claude API from the browser with a key saved on each
@@ -49,7 +49,7 @@ an AI coach to find substitutes and understand the deck.
     and `SETUP.md` when instructions change. Remind the user to upload to
     GitHub and check the version label.
 
-## Shared data (Firestore, under deckbinder/{code}/)
+## Shared data (Firestore, under deckbrewer/{code}/)
 
 - `decks/{deckId}`: `{ id, name, entries: [{ card, count }], createdAt, updatedAt }`
   Whole-deck writes; if two people edit the same deck at the same moment,

@@ -1,14 +1,14 @@
-# Deck Binder setup
+# Deck Brewer setup
 
-Deck Binder runs on GitHub Pages and keeps your decks and cards in Firebase,
-so everyone in the family sees the same binder on every device.
+Deck Brewer runs on GitHub Pages and keeps your decks and cards in Firebase,
+so everyone in the family sees the same decks and cards on every device.
 
 ## 1. Create a Firebase project (free, about 5 minutes)
 
-A new project keeps Deck Binder's rules separate from anything else you run.
+A new project keeps Deck Brewer's rules separate from anything else you run.
 
 1. Go to https://console.firebase.google.com and click **Create a project**.
-   Name it something like "deck-binder". Google Analytics isn't needed.
+   Name it something like "deck-brewer". Google Analytics isn't needed.
 2. Open **Build → Firestore Database → Create database**. Pick a location
    near you (us-central is fine) and start in **production mode**.
 3. Open the **Rules** tab. Select everything, delete it, and paste in the
@@ -24,7 +24,7 @@ The project stays on the free Spark plan. No card is needed.
 
 **Using a Firebase project you already have?** Don't replace its rules, or
 your other app will lose access. Open its Rules tab and paste the
-`familyCode()` line and the `match /deckbinder/{code}/{document=**}` block
+`familyCode()` line and the `match /deckbrewer/{code}/{document=**}` block
 from `firestore.rules` inside the existing
 `match /databases/{database}/documents { ... }` section. If a function named
 `familyCode()` is already there, rename this one (for example `deckCode()`)
@@ -32,13 +32,13 @@ in both places. Use that project's config in `firebase-config.js`.
 
 ## 2. Put it on GitHub Pages
 
-1. Create a new repository on GitHub (for example `deck-binder`). Public is
+1. Create a new repository on GitHub (for example `deck-brewer`). Public is
    fine; nothing secret is in these files.
 2. Upload `index.html`, `firebase-config.js`, `firestore.rules`, `SETUP.md`,
    `CHANGELOG.md` and `APP-GUIDELINES.md`.
 3. Open **Settings → Pages**. Under **Branch**, choose `main` and `/ (root)`,
    then **Save**. After a minute your site is at
-   `https://YOUR-NAME.github.io/deck-binder/`.
+   `https://YOUR-NAME.github.io/deck-brewer/`.
 
 ## 3. First visit on each device
 
@@ -53,7 +53,7 @@ in both places. Use that project's config in `firebase-config.js`.
 ## Why the family code matters
 
 Your Firebase config is public on GitHub Pages; that's normal for Firebase.
-The family code in the rules is what keeps your binder private, so choose
+The family code in the rules is what keeps your decks and cards private, so choose
 something not easy to guess and only share it with family.
 
 ## Updating the app later

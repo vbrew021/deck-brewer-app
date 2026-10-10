@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Deck Binder</title>
+<title>Deck Brewer</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -169,12 +169,12 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 </style>
 </head>
 <body>
-<div id="app"><div class="loading">Opening the binder…</div></div>
+<div id="app"><div class="loading">Opening your decks…</div></div>
 <script type="module">
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import { firebaseConfig } from './firebase-config.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const DEFAULT_MODEL = 'claude-sonnet-5-5';
 const FIREBASE_READY = !!(firebaseConfig && firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('PASTE'));
 
@@ -357,8 +357,8 @@ async function createFirebaseStore(code) {
   const fs = await import(FB + 'firebase-firestore.js');
   const app = getApps()[0] || initializeApp(firebaseConfig);
   const db = fs.getFirestore(app);
-  const decksCol = fs.collection(db, 'deckbinder', code, 'decks');
-  const collCol = fs.collection(db, 'deckbinder', code, 'collection');
+  const decksCol = fs.collection(db, 'deckbrewer', code, 'decks');
+  const collCol = fs.collection(db, 'deckbrewer', code, 'collection');
   try { await fs.getDocs(fs.query(decksCol, fs.limit(1))); }
   catch (e) {
     if (e.code === 'permission-denied') throw new Error('That family code didn’t match. Check it against the code in your Firebase rules.');
@@ -614,7 +614,7 @@ function CollectionView({ collection, store, onOpen }) {
   function backup() {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(collection)], { type: 'application/json' }));
-    a.download = `deck-binder-collection-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    a.download = `deck-brewer-collection-${new Date().toISOString().slice(0, 10)}.json`; a.click();
   }
   function restore(file) {
     const r = new FileReader();
@@ -623,7 +623,7 @@ function CollectionView({ collection, store, onOpen }) {
         const obj = JSON.parse(r.result);
         if (!confirm(`Replace the shared collection with the ${Object.keys(obj).length} cards in this backup?`)) return;
         await store.replaceCollection(obj);
-      } catch { alert('That file isn’t a Deck Binder backup.'); }
+      } catch { alert('That file isn’t a Deck Brewer backup.'); }
     };
     r.readAsText(file);
   }
@@ -753,13 +753,13 @@ function Settings({ mode, onClose, onDisconnect }) {
 function Connect({ onConnect, error, busy }) {
   const [code, setCode] = useState(''), [show, setShow] = useState(false);
   return html`<form class="connect" onSubmit=${(e) => { e.preventDefault(); code.trim() && onConnect(code.trim().toLowerCase()); }}>
-    <h1>Deck Binder</h1>
+    <h1>Deck Brewer</h1>
     <p class="muted">Enter your family code to open your shared decks and cards.</p>
     <label for="fc">Family code</label>
     <div class="pw"><input id="fc" type=${show ? 'text' : 'password'} value=${code} onInput=${(e) => setCode(e.target.value)} autocapitalize="off" autocomplete="off" spellcheck="false" />
       <button type="button" class="btn ghost small" onClick=${() => setShow(!show)}>${show ? 'Hide' : 'Show'}</button></div>
     ${error && html`<p class="warn small">${error}</p>`}
-    <div class="row" style="margin-top:16px"><button class="btn" disabled=${busy || !code.trim()}>${busy ? 'Connecting…' : 'Open our binder'}</button></div>
+    <div class="row" style="margin-top:16px"><button class="btn" disabled=${busy || !code.trim()}>${busy ? 'Connecting…' : 'Open our decks'}</button></div>
   </form>`;
 }
 
@@ -800,7 +800,7 @@ function App() {
   useEffect(() => { if (store && data.loaded && decks.length === 0) store.saveDeck(blankDeck('My first deck')); }, [store, data.loaded, decks.length]);
 
   if (FIREBASE_READY && !store) return html`<${Connect} onConnect=${setCode} error=${connErr} busy=${connecting} />`;
-  if (!data.loaded || !decks.length) return html`<div class="loading">Opening the binder…</div>`;
+  if (!data.loaded || !decks.length) return html`<div class="loading">Opening your decks…</div>`;
 
   const collection = data.collection;
   const deck = decks.find((d) => d.id === activeId) || decks[0];
@@ -837,7 +837,7 @@ function App() {
 
   return html`<div class="app">
     <header class="top">
-      <div class="brand">Deck Binder</div>
+      <div class="brand">Deck Brewer</div>
       <div class="deckpick">
         <select value=${deck.id} onChange=${(e) => setActiveId(e.target.value)} aria-label="Choose a deck">
           ${decks.map((d) => html`<option value=${d.id}>${d.name}</option>`)}
