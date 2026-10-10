@@ -35,6 +35,17 @@ an AI coach to find substitutes and understand the deck.
   cards from the "Add a missing card" form are stored in Firestore
   `customCards`. Both are searched and matched on import before TCGdex.
 - Formats: Standard, Expanded, and Casual (no legality checks).
+- Tabs: Deck, Find cards, Card Library (the family's collection; data still
+  lives in the Firestore `collection` path).
+- Advanced search: `blankFilters()` defines the filter fields, `CardFilters`
+  is the shared panel, `matchesFilters()` applies every filter locally (all of
+  Card Library; the rest of Find cards), and `searchCards()` sends what TCGdex
+  can filter (name, category, types, stage, trainerType, energyType, set via
+  id prefix, regulationMark, rarity, illustrator), fetching up to 1,000 cards.
+  HP range, card text, special label and format are applied locally.
+- Prices: `fetchPrices()` reads TCGplayer pricing from the TCGdex REST card
+  endpoint when a card's details open; `tcgplayerUrl()` links to TCGplayer
+  (extra cards can carry their own `tcgplayerUrl`).
 - The deck coach uses Gemini through Firebase AI Logic (Gemini Developer API,
   free tier, Spark plan) with App Check using the reCAPTCHA v3 provider.
   Use Flash-Lite models: in late 2026 the free tier gives them about 500

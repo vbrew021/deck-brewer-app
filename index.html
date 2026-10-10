@@ -145,6 +145,26 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .search-chips { margin-top: 6px; max-width: 100%; overflow-x: auto; }
 .composer { flex-wrap: wrap; }
 .webtoggle { order: 3; width: 100%; font-size: 13px; color: var(--muted); }
+.filters { margin-bottom: 14px; }
+.filters .searchbar { margin-bottom: 8px; }
+.filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 12px; background: var(--paper); border-radius: var(--r-md); padding: 12px 14px; }
+.fld { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fld.wide { grid-column: 1 / -1; }
+.fld.end { justify-content: flex-end; }
+.fld label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.fld input, .fld select { background: #F7F9FC; border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 7px 9px; width: 100%; }
+.range { display: flex; align-items: center; gap: 6px; } .range span { font-size: 12px; color: var(--muted); }
+.btn.has-filters { box-shadow: inset 0 0 0 2px var(--trainer); color: var(--trainer); }
+.result-count { margin: 6px 2px 0; }
+.prices { margin: 14px 0 4px; padding: 10px 12px; background: #F4F6FA; border-radius: var(--r-md); }
+.prices-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.tcgp { color: var(--trainer); font-weight: 600; font-size: 14px; }
+.price-table { overflow-x: auto; }
+.prices table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.prices th, .prices td { padding: 4px 6px; text-align: right; white-space: nowrap; }
+.prices thead th { color: var(--muted); font-weight: 600; }
+.prices tbody th { text-align: left; font-weight: 600; }
+.prices tbody tr + tr { border-top: 1px solid var(--line); }
 .chat-note { text-align: center; font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
 .thinking { color: var(--muted); font-style: italic; }
 .suggest { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -196,7 +216,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -224,7 +244,7 @@ const CODE_FOR_SET = {};
 for (const [code, ids] of Object.entries(SET_CODES)) for (const id of ids) {
   if (!CODE_FOR_SET[id] || (CODE_FOR_SET[id].includes(':') && !code.includes(':'))) CODE_FOR_SET[id] = code.split(':')[0];
 }
-const CARD_FIELDS = `id localId name image category hp types evolveFrom stage suffix trainerType energyType effect regulationMark rarity
+const CARD_FIELDS = `id localId name image category hp types evolveFrom stage suffix trainerType energyType effect regulationMark rarity illustrator retreat
   legal { standard expanded } abilities { name effect } attacks { name cost damage effect } set { id name releaseDate tcgOnline }`;
 
 async function gql(query, variables = {}) {
@@ -239,6 +259,16 @@ async function gql(query, variables = {}) {
 const fetchCards = async (filters, perPage = 250) =>
   ((await gql(`query($f: CardsFilters, $p: Pagination) { cards(filters: $f, pagination: $p) { ${CARD_FIELDS} } }`, { f: filters, p: { page: 1, itemsPerPage: perPage } })).cards || []).filter(Boolean);
 
+// Fetch several pages for broad searches (up to `max` cards).
+async function fetchCardsPaged(filters, max = 1000) {
+  const out = [];
+  for (let page = 1; out.length < max; page++) {
+    const batch = ((await gql(`query($f: CardsFilters, $p: Pagination) { cards(filters: $f, pagination: $p) { ${CARD_FIELDS} } }`, { f: filters, p: { page, itemsPerPage: 250 } })).cards || []).filter(Boolean);
+    out.push(...batch);
+    if (batch.length < 250) break;
+  }
+  return out;
+}
 const stripZeros = (n) => (/^\d+$/.test(n) ? String(parseInt(n, 10)) : n);
 const TRAINER_SUBTYPE = { Tool: 'Pokémon Tool', 'Pokémon Tool': 'Pokémon Tool', Supporter: 'Supporter', Item: 'Item', Stadium: 'Stadium' };
 
@@ -259,7 +289,7 @@ function slimCard(c) {
     hp: c.hp ?? null, evolvesFrom: c.evolveFrom || null,
     setCode: CODE_FOR_SET[setId] || c.set?.tcgOnline || setId.toUpperCase(), setName: c.set?.name || '',
     number: stripZeros(String(c.localId ?? '')), releaseDate: c.set?.releaseDate || '',
-    regulationMark: c.regulationMark || null,
+    regulationMark: c.regulationMark || null, rarity: c.rarity || '', illustrator: c.illustrator || '', retreat: c.retreat ?? null,
     standard: !!c.legal?.standard, expanded: !!c.legal?.expanded,
     image: c.image ? `${c.image}/low.webp` : null, imageLarge: c.image ? `${c.image}/high.webp` : null,
     rules: cat !== 'Pokémon' && c.effect ? [c.effect] : [],
@@ -307,6 +337,7 @@ const BUILT_IN_EXTRAS = [
     setCode: 'CLC', setName: 'Pokémon Trading Card Game Classic (Charizard)', number: '26', releaseDate: '2023-11-17',
     image: 'https://tcgplayer-cdn.tcgplayer.com/product/527972_in_400x400.jpg',
     imageLarge: 'https://tcgplayer-cdn.tcgplayer.com/product/527972_in_1000x1000.jpg',
+    tcgplayerUrl: 'https://www.tcgplayer.com/product/527972/pokemon-trading-card-game-classic-scorching-charcoal?Language=English',
     rules: ['The attacks used by the Charizard this card is attached to do 100 more damage to your opponent’s Active Pokémon (before applying Weakness and Resistance).', '(This card cannot be used at official tournaments.)'],
     builtIn: true,
   }),
@@ -332,22 +363,102 @@ async function resolveLines(lines) {
 }
 
 const KIND = { pokemon: 'Pokemon', trainer: 'Trainer', energy: 'Energy' };
-async function searchCards({ q, kind, standard }) {
-  const ql = (q || '').toLowerCase();
-  const extras = EXTRA_CARDS.filter((c) => (!ql || c.name.toLowerCase().includes(ql)) && (kind === 'all' || sectionOf(c) === kind));
-  const tcg = await searchTcgdex({ q, kind, standard });
-  return { cards: [...extras.sort(newestFirst), ...tcg.cards] };
+const ENERGY_TYPES = ['Grass', 'Fire', 'Water', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon', 'Colorless'];
+const SPECIALS = { ex: 'Pokémon ex', mega: 'Mega Evolution', v: 'V, VSTAR, VMAX', radiant: 'Radiant', ace: 'ACE SPEC', none: 'No rule box' };
+const TRAINER_KINDS = ['Item', 'Supporter', 'Pokémon Tool', 'Stadium'];
+const SORTS = { newest: 'Newest first', oldest: 'Oldest first', name: 'Name (A–Z)', hp: 'HP (high to low)', number: 'Set and number' };
+const blankFilters = (format = 'standard') => ({ q: '', text: '', kind: 'all', energy: '', stage: '', special: '', trainer: '', energyKind: '', hpMin: '', hpMax: '', set: '', mark: '', format, rarity: '', artist: '', sort: 'newest' });
+const ADVANCED_KEYS = ['text', 'energy', 'stage', 'special', 'trainer', 'energyKind', 'hpMin', 'hpMax', 'set', 'mark', 'rarity', 'artist'];
+const activeAdvanced = (f) => ADVANCED_KEYS.filter((k) => String(f[k] || '').trim()).length;
+
+const lc = (v) => String(v || '').toLowerCase();
+function specialOf(c) {
+  const n = c.name || '';
+  if (c.subtypes.includes('ACE SPEC')) return 'ace';
+  if (/^Mega /.test(n)) return 'mega';
+  if (/ ex$/.test(n)) return 'ex';
+  if (/ (V|VSTAR|VMAX|V-UNION)$/.test(n) || c.subtypes.some((t) => /^(V|VSTAR|VMAX)$/.test(t))) return 'v';
+  if (/^Radiant /.test(n) || c.subtypes.includes('Radiant')) return 'radiant';
+  return 'none';
 }
-async function searchTcgdex({ q, kind, standard }) {
-  const f = {};
-  if (q) f.name = cleanFilter(q);
-  if (kind !== 'all') f.category = `eq:${KIND[kind]}`;
-  if (!f.name && !f.category) return { cards: [] };
-  if (!f.name && standard) f.regulationMark = 'notnull:';
-  let cards = (await fetchCards(f, 250)).map(slimCard);
-  if (standard) cards = cards.filter((c) => c.standard);
-  return { cards: cards.sort(newestFirst) };
+const cardText = (c) => [...c.attacks.map((a) => `${a.name} ${a.text}`), ...c.abilities.map((a) => `${a.name} ${a.text}`), ...c.rules].join(' ').toLowerCase();
+const markList = (m) => String(m || '').toUpperCase().split(/[\s,|]+/).filter(Boolean);
+
+// Every filter, checked on our side (used for the Card Library and to finish Find cards results).
+function matchesFilters(c, f, { skipFormat = false } = {}) {
+  const sec = sectionOf(c);
+  if (f.q.trim() && !lc(c.name).includes(lc(f.q.trim()))) return false;
+  if (f.text.trim() && !f.text.toLowerCase().split(/\s+/).filter(Boolean).every((w) => cardText(c).includes(w))) return false;
+  if (f.kind !== 'all' && sec !== f.kind) return false;
+  if (f.energy && !(c.types || []).includes(f.energy)) return false;
+  if (f.stage && !(sec === 'pokemon' && c.subtypes.includes(f.stage))) return false;
+  if (f.special && specialOf(c) !== f.special) return false;
+  if (f.trainer && !(sec === 'trainer' && c.subtypes.includes(f.trainer))) return false;
+  if (f.energyKind && !(sec === 'energy' && c.subtypes.includes(f.energyKind))) return false;
+  if (f.hpMin && !(Number(c.hp) >= Number(f.hpMin))) return false;
+  if (f.hpMax && !(Number(c.hp) > 0 && Number(c.hp) <= Number(f.hpMax))) return false;
+  if (f.set.trim() && c.setCode.toUpperCase() !== f.set.trim().toUpperCase()) return false;
+  if (f.mark.trim() && !markList(f.mark).includes(String(c.regulationMark || '').toUpperCase())) return false;
+  if (f.rarity.trim() && !lc(c.rarity).includes(lc(f.rarity.trim()))) return false;
+  if (f.artist.trim() && !lc(c.illustrator).includes(lc(f.artist.trim()))) return false;
+  if (!skipFormat && f.format === 'standard' && !c.standard) return false;
+  if (!skipFormat && f.format === 'expanded' && !c.expanded) return false;
+  return true;
 }
+const numKey = (n) => String(n || '').replace(/\d+/, (d) => d.padStart(4, '0'));
+function sortCards(cards, sort) {
+  const by = {
+    newest: (a, b) => newestFirst(a, b) || numKey(a.number).localeCompare(numKey(b.number)),
+    oldest: (a, b) => -newestFirst(a, b) || numKey(a.number).localeCompare(numKey(b.number)),
+    name: (a, b) => a.name.localeCompare(b.name) || newestFirst(a, b),
+    hp: (a, b) => (Number(b.hp) || 0) - (Number(a.hp) || 0) || a.name.localeCompare(b.name),
+    number: (a, b) => a.setCode.localeCompare(b.setCode) || numKey(a.number).localeCompare(numKey(b.number)),
+  }[sort] || newestFirst;
+  return [...cards].sort(by);
+}
+
+// Find cards: send what TCGdex can filter, then apply the rest here.
+const STAGE_TCGDEX = { Basic: 'Basic', 'Stage 1': 'Stage1', 'Stage 2': 'Stage2' };
+const TRAINER_TCGDEX = { Item: 'Item', Supporter: 'Supporter', 'Pokémon Tool': 'Tool', Stadium: 'Stadium' };
+async function searchCards(f) {
+  const tf = {};
+  if (f.q.trim()) tf.name = cleanFilter(f.q);
+  if (f.kind !== 'all') tf.category = `eq:${KIND[f.kind]}`;
+  if (f.energy) tf.types = f.energy;
+  if (f.stage) { tf.stage = `eq:${STAGE_TCGDEX[f.stage]}`; tf.category = 'eq:Pokemon'; }
+  if (f.trainer) { tf.trainerType = `eq:${TRAINER_TCGDEX[f.trainer]}`; tf.category = 'eq:Trainer'; }
+  if (f.energyKind) { tf.energyType = f.energyKind === 'Basic' ? 'eq:Normal|Basic' : 'eq:Special'; tf.category = 'eq:Energy'; }
+  if (f.set.trim()) {
+    const ids = SET_CODES[f.set.trim().toUpperCase()];
+    if (!ids) throw new Error(`Unknown set code “${f.set.trim()}”. Try a code like TWM or MEG.`);
+    tf.id = ids.map((id) => `${id}-`).join('|');
+  }
+  if (f.mark.trim()) tf.regulationMark = 'eq:' + markList(f.mark).join('|');
+  if (f.rarity.trim()) tf.rarity = cleanFilter(f.rarity);
+  if (f.artist.trim()) tf.illustrator = cleanFilter(f.artist);
+  const extras = EXTRA_CARDS.filter((c) => matchesFilters(c, f, { skipFormat: true }) && (f.q.trim() || f.set.trim() || f.text.trim()));
+  if (!Object.keys(tf).length && !f.text.trim()) return { cards: extras, needMore: !extras.length };
+  if (!Object.keys(tf).length) throw new Error('Card text search needs at least one other filter, like a name, type, set or regulation mark.');
+  const raw = await fetchCardsPaged(tf, 1000);
+  const cards = raw.map(slimCard).filter((c) => matchesFilters(c, f));
+  return { cards: [...sortCards(extras, f.sort), ...sortCards(cards, f.sort)], capped: raw.length >= 1000 };
+}
+
+// Prices from TCGplayer, via TCGdex (fetched when a card's details are opened).
+const priceCache = {};
+async function fetchPrices(card) {
+  if (!card || card.custom || card.builtIn || !/^[a-z0-9.]+-[A-Za-z0-9]+$/.test(card.id)) return null;
+  if (priceCache[card.id]) return priceCache[card.id];
+  const res = await fetch(`https://api.tcgdex.net/v2/en/cards/${encodeURIComponent(card.id)}`);
+  if (!res.ok) return null;
+  const tp = (await res.json())?.pricing?.tcgplayer;
+  if (!tp) return (priceCache[card.id] = { rows: [] });
+  const LABELS = { normal: 'Normal', holofoil: 'Holofoil', 'reverse-holofoil': 'Reverse holo', reverse: 'Reverse holo', '1st-edition': '1st edition', '1st-edition-holofoil': '1st edition holo', unlimited: 'Unlimited', 'unlimited-holofoil': 'Unlimited holo' };
+  const rows = Object.entries(tp).filter(([, v]) => v && typeof v === 'object').map(([k, v]) => ({ label: LABELS[k] || k, low: v.lowPrice, mid: v.midPrice, high: v.highPrice, market: v.marketPrice }));
+  return (priceCache[card.id] = { rows, updated: tp.updated, unit: tp.unit || 'USD' });
+}
+const tcgplayerUrl = (c) => c.tcgplayerUrl || `https://www.tcgplayer.com/search/pokemon/product?productLineName=pokemon&q=${encodeURIComponent(`${c.name} ${c.setName || ''}`.trim())}&view=grid`;
+const money = (v) => (v == null ? '–' : `$${Number(v).toFixed(2)}`);
 
 // Cards saved before version 1.2.0 came from pokemontcg.io; find their TCGdex versions.
 const isLegacyCard = (c) => !!c && /pokemontcg\.io/.test(c.image || c.imageLarge || '');
@@ -528,8 +639,8 @@ const RULES_TEXT = `Deck rules: exactly 60 cards, at most 4 copies of any card b
 const SYSTEM = `You are a friendly, expert Pokémon TCG deck-building coach helping a parent and their kid build 60-card decks.
 
 How you help:
-- Work from the current deck and the cards in their app collection (both given in each message).
-- Suggest a mix: the best options from cards in their collection AND good cards they don't have in the app yet, including full evolution lines (for example 3 Charmander, 1 Charmeleon, 2 Charizard ex), so they know what to look for in their binders or pick up later. Their app collection may be incomplete, so say "not in your app collection" rather than "you don't own".
+- Work from the current deck and the cards in their Card Library (their collection in the app; both given in each message).
+- Suggest a mix: the best options from cards in their collection AND good cards they don't have in the app yet, including full evolution lines (for example 3 Charmander, 1 Charmeleon, 2 Charizard ex), so they know what to look for in their binders or pick up later. Their Card Library may be incomplete, so say "not in your Card Library" rather than "you don't own".
 - Use "group" in suggestions to organize them, for example "From your collection", "Charizard ex line", or "Worth picking up".
 - When they paste or mention a list from Limitless or another site, compare it with their collection, point out what's missing, and suggest realistic substitutes from what they own, explaining the trade-off.
 - Respect the rules. ${RULES_TEXT} Use the format given in the message.
@@ -588,7 +699,7 @@ const currentCoachModel = () => COACH_MODELS[modelIndex];
 
 const NOTES_LIMIT = 1500;
 const deckContext = (deck, collection, format, notes = '', otherDecks = '') =>
-  `Coach notes (family preferences):\n${notes.trim() || '(none yet)'}\n\nOur other decks:\n${otherDecks || '(none)'}\n\nFormat: ${formatName(format)}\n\nCurrent deck ("${deck.name}"):\n${deck.entries.length ? exportDecklist(deck.entries) : '(empty)'}\n\nCards we own:\n${collectionText(collection) || '(nothing recorded yet)'}`;
+  `Coach notes (family preferences):\n${notes.trim() || '(none yet)'}\n\nOur other decks:\n${otherDecks || '(none)'}\n\nFormat: ${formatName(format)}\n\nCurrent deck ("${deck.name}"):\n${deck.entries.length ? exportDecklist(deck.entries) : '(empty)'}\n\nCards in our Card Library:\n${collectionText(collection) || '(nothing recorded yet)'}`;
 
 // One line per other deck, e.g. "Charizard v2 (60 cards; main Pokémon: Charizard ex, Pidgeot ex)".
 function describeDecks(decks, currentId) {
@@ -710,7 +821,7 @@ function claudePrompt({ question, deck, collection, format, notes = '', otherDec
 ${question.trim() || 'Please look over our current deck. What are we missing, and what could we use from the cards we own instead?'}
 
 Some context:
-- Suggest a mix of cards from our collection and good cards we don't have in the app yet (including full evolution lines), so we know what to look for. Our app collection may be incomplete.
+- Suggest a mix of cards from our Card Library and good cards we don't have in it yet (including full evolution lines), so we know what to look for. Our Card Library may be incomplete.
 - Feel free to check current decklists on limitlesstcg.com for this archetype, and tell us where ideas come from.
 - ${RULES_TEXT}
 - Explain things simply enough for a kid to follow.
@@ -767,9 +878,10 @@ function CardModal({ card, deckCount, ownedExact, onDeck, onOwned, onClose, onDe
         ${card.abilities.map((a) => html`<div class="cardtext"><strong>Ability: ${a.name}</strong><p>${a.text}</p></div>`)}
         ${card.attacks.map((a) => html`<div class="cardtext"><strong>${a.name}${a.damage ? ` ${a.damage}` : ''}</strong>${a.text && html`<p>${a.text}</p>`}</div>`)}
         ${sectionOf(card) !== 'pokemon' && card.rules.map((r) => html`<p class="cardtext">${r}</p>`)}
+        <${PricePanel} card=${card} />
         <div class="modal-controls">
           <${Stepper} label="In this deck" value=${deckCount} onChange=${onDeck} max=${60} />
-          <${Stepper} label="We own (this print)" value=${ownedExact} onChange=${onOwned} />
+          <${Stepper} label="In library (this print)" value=${ownedExact} onChange=${onOwned} />
         </div>
         <div class="row">
           <button class="btn ghost" onClick=${onClose}>Close</button>
@@ -777,6 +889,22 @@ function CardModal({ card, deckCount, ownedExact, onDeck, onOwned, onClose, onDe
         </div>
       </div>
     </div>
+  </div>`;
+}
+
+function PricePanel({ card }) {
+  const [p, setP] = useState(undefined);
+  useEffect(() => { let live = true; setP(undefined); fetchPrices(card).then((r) => live && setP(r)).catch(() => live && setP(null)); return () => { live = false; }; }, [card.id]);
+  const link = html`<a class="tcgp" href=${tcgplayerUrl(card)} target="_blank" rel="noopener">See it on TCGplayer</a>`;
+  return html`<div class="prices">
+    <div class="prices-head"><strong>TCGplayer prices</strong>${link}</div>
+    ${p === undefined ? html`<p class="small muted">Loading prices…</p>`
+      : !p || !p.rows.length ? html`<p class="small muted">No price data here for this card. Check TCGplayer for current prices.</p>`
+      : html`<div class="price-table"><table>
+          <thead><tr><th></th><th>Low</th><th>Mid</th><th>High</th><th>Market</th></tr></thead>
+          <tbody>${p.rows.map((r) => html`<tr><th>${r.label}</th><td>${money(r.low)}</td><td>${money(r.mid)}</td><td>${money(r.high)}</td><td>${money(r.market)}</td></tr>`)}</tbody>
+        </table></div>
+        ${p.updated && html`<p class="small muted">Prices from TCGplayer, updated ${new Date(p.updated).toLocaleDateString()}. Current prices may differ.</p>`}`}
   </div>`;
 }
 
@@ -802,7 +930,7 @@ function ExtraCardForm({ initialName, onSave, onClose }) {
   return html`<div class="scrim" onClick=${onClose}>
     <div class="modal settings" role="dialog" aria-modal="true" aria-label="Add a missing card" onClick=${(e) => e.stopPropagation()}>
       <h2>Add a missing card</h2>
-      <p class="muted small">For cards the card database doesn’t have, like non-tournament cards. Everyone in the family will see it.</p>
+      <p class="muted small">For cards the card database doesn’t have, like non-tournament cards. Everyone in the family will see it in Find cards.</p>
       <label for="xn">Card name</label><input id="xn" value=${f.name} onInput=${set('name')} />
       <div class="row">
         <div style="flex:1"><label for="xt">Card type</label>
@@ -895,46 +1023,90 @@ function DeckView({ deck, collection, stats, onOpen, onImport }) {
   </section>`;
 }
 
+/* ---------- Advanced search panel (Find cards and Card Library) ---------- */
+const SET_CODE_LIST = Object.keys(SET_CODES).filter((c) => !c.includes(':')).sort();
+function CardFilters({ f, setF, onSearch, busy, library, resultCount }) {
+  const [open, setOpen] = useState(activeAdvanced(f) > 0);
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const n = activeAdvanced(f);
+  const sel = (id, k, label, opts, anyLabel = 'Any') => html`<div class="fld"><label for=${id}>${label}</label>
+    <select id=${id} value=${f[k]} onChange=${set(k)}><option value="">${anyLabel}</option>${opts}</select></div>`;
+  return html`<form class="filters" onSubmit=${(e) => { e.preventDefault(); onSearch?.(); }}>
+    <div class="searchbar">
+      <input value=${f.q} onInput=${set('q')} placeholder=${library ? 'Filter by name' : 'Card name, like Dragapult or Iono'} aria-label="Card name" />
+      <select value=${f.kind} onChange=${(e) => setF({ ...f, kind: e.target.value, stage: '', trainer: '', energyKind: '', energy: e.target.value === 'trainer' ? '' : f.energy })} aria-label="Card type">
+        <option value="all">All cards</option><option value="pokemon">Pokémon</option><option value="trainer">Trainers</option><option value="energy">Energy</option>
+      </select>
+      <select value=${f.format} onChange=${set('format')} aria-label="Format">
+        <option value="any">Any format</option><option value="standard">Standard legal</option><option value="expanded">Expanded legal</option>
+      </select>
+      <button type="button" class=${`btn ghost ${n ? 'has-filters' : ''}`} aria-expanded=${open} onClick=${() => setOpen(!open)}>${open ? 'Fewer filters' : 'More filters'}${n ? ` (${n})` : ''}</button>
+      ${!library && html`<button class="btn" disabled=${busy}>${busy ? 'Searching…' : 'Search'}</button>`}
+    </div>
+    ${open && html`<div class="filter-grid">
+      <div class="fld wide"><label for="ft">Card text</label><input id="ft" value=${f.text} onInput=${set('text')} placeholder="Words in attacks or abilities, like draw or switch" /></div>
+      ${f.kind !== 'trainer' && sel('fe', 'energy', 'Pokémon / Energy type', ENERGY_TYPES.map((t) => html`<option value=${t}>${t}</option>`))}
+      ${(f.kind === 'all' || f.kind === 'pokemon') && sel('fs', 'stage', 'Stage', ['Basic', 'Stage 1', 'Stage 2'].map((t) => html`<option value=${t}>${t}</option>`))}
+      ${sel('fx', 'special', 'Special label', Object.entries(SPECIALS).map(([k, v]) => html`<option value=${k}>${v}</option>`))}
+      ${(f.kind === 'all' || f.kind === 'trainer') && sel('fk', 'trainer', 'Trainer kind', TRAINER_KINDS.map((t) => html`<option value=${t}>${t}</option>`))}
+      ${(f.kind === 'all' || f.kind === 'energy') && sel('fn', 'energyKind', 'Energy kind', ['Basic', 'Special'].map((t) => html`<option value=${t}>${t}</option>`))}
+      <div class="fld"><label>HP</label><div class="range">
+        <input aria-label="Minimum HP" inputmode="numeric" placeholder="min" value=${f.hpMin} onInput=${set('hpMin')} />
+        <span>to</span><input aria-label="Maximum HP" inputmode="numeric" placeholder="max" value=${f.hpMax} onInput=${set('hpMax')} /></div></div>
+      <div class="fld"><label for="fset">Set code</label><input id="fset" list="setcodes" value=${f.set} onInput=${set('set')} placeholder="TWM, MEG…" />
+        <datalist id="setcodes">${SET_CODE_LIST.map((c) => html`<option value=${c} />`)}</datalist></div>
+      <div class="fld"><label for="fm">Regulation mark</label><input id="fm" value=${f.mark} onInput=${set('mark')} placeholder="H I J" /></div>
+      <div class="fld"><label for="fr">Rarity</label><input id="fr" value=${f.rarity} onInput=${set('rarity')} placeholder="Rare, Illustration…" /></div>
+      <div class="fld"><label for="fa">Artist</label><input id="fa" value=${f.artist} onInput=${set('artist')} /></div>
+      <div class="fld"><label for="fo">Sort by</label><select id="fo" value=${f.sort} onChange=${set('sort')}>
+        ${Object.entries(SORTS).map(([k, v]) => html`<option value=${k}>${v}</option>`)}</select></div>
+      <div class="fld end"><button type="button" class="btn ghost small" onClick=${() => setF({ ...blankFilters(f.format), q: f.q, kind: f.kind })}>Clear filters</button></div>
+    </div>`}
+    ${resultCount != null && html`<p class="small muted result-count">${resultCount} card${resultCount === 1 ? '' : 's'}</p>`}
+  </form>`;
+}
+
 /* ---------- Find cards tab ---------- */
 const PAGE = 36;
 function SearchView({ onOpen, onAddDeck, onAddOwned, ownedOf, deckCountOf, onAddExtra }) {
-  const [q, setQ] = useState(''), [kind, setKind] = useState('all'), [standard, setStandard] = useState(true);
-  const [st, setSt] = useState({ cards: [], shown: PAGE, busy: false, error: null, searched: false });
+  const [f, setF] = usePref('db.findFilters', blankFilters('standard'));
+  const [st, setSt] = useState({ cards: [], shown: PAGE, busy: false, error: null, searched: false, capped: false, needMore: false });
   async function search() {
     setSt((s) => ({ ...s, busy: true, error: null }));
     try {
-      const d = await searchCards({ q: q.trim(), kind, standard });
-      setSt({ cards: d.cards, shown: PAGE, busy: false, error: null, searched: true });
+      const d = await searchCards({ ...blankFilters(), ...f });
+      setSt({ cards: d.cards, shown: PAGE, busy: false, error: null, searched: true, capped: !!d.capped, needMore: !!d.needMore });
     } catch (e) { setSt((s) => ({ ...s, busy: false, error: e.message })); }
   }
+  // Coming back to this tab re-runs the last search so results aren't lost.
+  useEffect(() => { const ff = { ...blankFilters(), ...f }; if (ff.q.trim() || ff.kind !== 'all' || activeAdvanced(ff)) search(); }, []);
   const visible = st.cards.slice(0, st.shown);
   return html`<section class="search">
-    <form class="searchbar" onSubmit=${(e) => { e.preventDefault(); search(); }}>
-      <input value=${q} onInput=${(e) => setQ(e.target.value)} placeholder="Card name, like Dragapult or Iono" aria-label="Card name" />
-      <select value=${kind} onChange=${(e) => setKind(e.target.value)} aria-label="Card type">
-        <option value="all">All cards</option><option value="pokemon">Pokémon</option><option value="trainer">Trainers</option><option value="energy">Energy</option>
-      </select>
-      <label class="check"><input type="checkbox" checked=${standard} onChange=${(e) => setStandard(e.target.checked)} /> Standard only</label>
-      <button class="btn" disabled=${st.busy}>${st.busy ? 'Searching…' : 'Search'}</button>
-    </form>
+    <${CardFilters} f=${{ ...blankFilters(), ...f }} setF=${setF} onSearch=${search} busy=${st.busy} resultCount=${st.searched && !st.busy ? st.cards.length : null} />
     ${st.error && html`<p class="warn">${st.error}</p>`}
-    ${st.searched && !st.cards.length && !st.busy && html`<p class="empty">No cards match. Check the spelling, or turn off “Standard only”.</p>`}
-    ${st.searched && !st.busy && html`<p class="small muted">Can’t find a card? <button class="linkbtn" onClick=${() => onAddExtra(q.trim())}>Add a missing card</button></p>`}
+    ${st.needMore && html`<p class="empty">Add a name or at least one filter (type, set, stage…) to search.</p>`}
+    ${st.capped && html`<p class="small muted">Showing matches from the first 1,000 results. Add a filter to narrow it down.</p>`}
+    ${st.searched && !st.cards.length && !st.busy && !st.needMore && !st.error && html`<p class="empty">No cards match. Check the spelling, or loosen a filter (like Standard legal).</p>`}
+    ${st.searched && !st.busy && html`<p class="small muted">Can’t find a card? <button class="linkbtn" onClick=${() => onAddExtra(f.q.trim())}>Add a missing card</button></p>`}
     <div class="grid wide">${visible.map((c) => html`<${CardTile} key=${c.id} card=${c} onOpen=${onOpen}>
       <button class="mini" onClick=${() => onAddDeck(c)}>+ Deck${deckCountOf(c) ? ` (${deckCountOf(c)})` : ''}</button>
-      <button class="mini ghost" onClick=${() => onAddOwned(c)}>+ Own${ownedOf(c) ? ` (${ownedOf(c)})` : ''}</button>
+      <button class="mini ghost" onClick=${() => onAddOwned(c)}>+ Library${ownedOf(c) ? ` (${ownedOf(c)})` : ''}</button>
     <//>`)}</div>
     ${st.cards.length > st.shown && html`<button class="btn ghost more" onClick=${() => setSt((s) => ({ ...s, shown: s.shown + PAGE }))}>Show more (${st.cards.length - st.shown} left)</button>`}
   </section>`;
 }
 
-/* ---------- Our cards tab ---------- */
+/* ---------- Card Library tab ---------- */
 function CollectionView({ collection, store, onOpen }) {
-  const [filter, setFilter] = useState(''), [kind, setKind] = useState('all');
+  const [f, setF] = usePref('db.libraryFilters', { ...blankFilters('any'), sort: 'name' });
+  const filters = { ...blankFilters('any'), ...f };
   const fileRef = useRef(null);
-  const items = useMemo(() => Object.values(collection)
-    .filter((e) => (kind === 'all' || sectionOf(e.card) === kind) && e.card.name.toLowerCase().includes(filter.toLowerCase()))
-    .sort((a, b) => a.card.name.localeCompare(b.card.name)), [collection, filter, kind]);
+  const items = useMemo(() => {
+    const list = Object.values(collection).filter((e) => matchesFilters(e.card, filters));
+    const order = sortCards(list.map((e) => e.card), filters.sort).map((c) => c.id);
+    const byId = Object.fromEntries(list.map((e) => [e.card.id, e]));
+    return order.map((id) => byId[id]);
+  }, [collection, f]);
   const total = Object.values(collection).reduce((n, e) => n + e.count, 0);
 
   const importItems = (list) => {
@@ -960,24 +1132,19 @@ function CollectionView({ collection, store, onOpen }) {
   }
   return html`<section class="collection">
     <div class="statbar">
-      <div class="count60"><b>${total}</b><span>cards we own</span></div>
+      <div class="count60"><b>${total}</b><span>cards in your library</span></div>
       <div class="row end">
         <button class="btn ghost" onClick=${backup} disabled=${!total}>Save backup</button>
         <button class="btn ghost" onClick=${() => fileRef.current.click()}>Load backup</button>
         <input ref=${fileRef} type="file" accept="application/json" hidden onChange=${(e) => { e.target.files[0] && restore(e.target.files[0]); e.target.value = ''; }} />
       </div>
     </div>
-    <${ImportBox} title="Add cards we own"
+    <${ImportBox} title="Add cards to your library"
       hint="Paste a list in the same format as a decklist (count, name, set code, number). Use Find cards to add one at a time."
-      actions=${[{ mode: 'add', label: 'Add to our cards', primary: true }]} onDone=${importItems} />
-    <div class="searchbar">
-      <input value=${filter} onInput=${(e) => setFilter(e.target.value)} placeholder="Filter by name" aria-label="Filter by name" />
-      <select value=${kind} onChange=${(e) => setKind(e.target.value)} aria-label="Card type">
-        <option value="all">All cards</option><option value="pokemon">Pokémon</option><option value="trainer">Trainers</option><option value="energy">Energy</option>
-      </select>
-    </div>
+      actions=${[{ mode: 'add', label: 'Add to library', primary: true }]} onDone=${importItems} />
+    <${CardFilters} f=${filters} setF=${setF} library=${true} resultCount=${total ? items.reduce((n, e) => n + e.count, 0) : null} />
     ${!items.length
-      ? html`<p class="empty">${total ? 'No owned cards match that filter.' : 'Nothing here yet. Paste a list above or add cards from Find cards.'}</p>`
+      ? html`<p class="empty">${total ? 'No cards in your library match those filters.' : 'Nothing here yet. Paste a list above or add cards from Find cards.'}</p>`
       : html`<div class="grid wide">${items.map((e) => html`<${CardTile} key=${e.card.id} card=${e.card} count=${e.count} onOpen=${onOpen} />`)}</div>`}
   </section>`;
 }
@@ -1147,7 +1314,7 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
             <strong>${s.action === 'show' ? s.name : `${s.action === 'remove' ? '−' : '+'}${s.count} ${s.name}`}</strong>
             <span class="small">${s.reason}</span>
             ${s.card && s.action !== 'remove' && html`<span class="small muted">${ownedCount(s.card, collection)
-              ? `${ownedCount(s.card, collection)} in your collection` : 'Not in your app collection yet'}${deckCountOf(deck, s.card) ? `, ${deckCountOf(deck, s.card)} in this deck` : ''}
+              ? `${ownedCount(s.card, collection)} in your library` : 'Not in your Card Library yet'}${deckCountOf(deck, s.card) ? `, ${deckCountOf(deck, s.card)} in this deck` : ''}
               ${ownedCount(s.card, collection) < Math.max(1, s.count) && html` <button class="linkbtn" onClick=${() => onOwned(s.card, Math.max(1, s.count))}>We have it</button>`}</span>`}
             ${!s.card ? html`<span class="small warn">Couldn’t find this card. Try Find cards.</span>`
               : s.done ? html`<span class="sugg-status ok">${s.action === 'remove' ? 'Removed' : 'Added'}</span>`
@@ -1368,7 +1535,7 @@ function App() {
     ${upgrade && html`<p class="muted small">${upgrade}</p>`}
 
     <nav class="tabs" role="tablist">
-      ${[['deck', 'Deck'], ['search', 'Find cards'], ['collection', 'Our cards']].map(([k, label]) =>
+      ${[['deck', 'Deck'], ['search', 'Find cards'], ['collection', 'Card Library']].map(([k, label]) =>
         html`<button role="tab" aria-selected=${tab === k} class=${tab === k ? 'on' : ''} onClick=${() => setTab(k)}>${label}</button>`)}
     </nav>
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.0 (October 10, 2026)
+- Changed: "Our cards" is now "Card Library".
+- Added: advanced search in Find cards and Card Library, modeled on
+  Limitless's card search: card text, Pokémon/Energy type, stage, special
+  label (ex, Mega, V, Radiant, ACE SPEC, no rule box), Trainer kind, Energy
+  kind, HP range, set code, regulation mark, rarity, artist, format, and
+  sorting. Filters are remembered, and Find cards re-runs your last search
+  when you come back to the tab.
+- Added: TCGplayer low, mid, high and market prices in each card's details
+  (from TCGdex), with a "See it on TCGplayer" link.
+- No Firebase changes needed.
+
 ## 1.5.0 (October 10, 2026)
 - Added: "Search the web" (on by default) lets the coach look up current
   decklists on Limitless and other sites with Google Search, and read pages
