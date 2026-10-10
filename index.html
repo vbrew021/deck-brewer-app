@@ -4,7 +4,13 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Deck Brews</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
+<link rel="icon" type="image/png" href="icons/icon-192.png" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#24315C" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Deck Brews" />
 <meta name="color-scheme" content="light dark" />
 <script>
   // Apply the saved theme before the page draws, so dark mode doesn't flash white.
@@ -237,6 +243,26 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .prices thead th { color: var(--muted); font-weight: 600; }
 .prices tbody th { text-align: left; font-weight: 600; }
 .prices tbody tr + tr { border-top: 1px solid var(--line); }
+.shared { margin: 0 0 12px; padding: 10px 14px; background: var(--soft); border-radius: var(--r-md); border-left: 4px solid var(--short); font-size: 14px; }
+.shared summary { cursor: pointer; }
+.shared ul { margin: 8px 0 4px; padding-left: 20px; }
+.shared li { margin: 3px 0; }
+.scan-results { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.scan-row { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: start; padding: 8px; border-radius: var(--r-md); background: var(--soft); }
+.scan-row.off { opacity: .55; }
+.scan-body { display: flex; flex-direction: column; gap: 6px; }
+.scan-body .stepper { min-width: 180px; }
+.modal.tester { display: block; max-width: 860px; }
+.tester-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.draw-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.draw-row.prizes { padding: 8px; border-radius: var(--r-md); background: var(--soft); }
+.draw-card { padding: 0; border: 0; background: var(--tile-bg); border-radius: 6px; aspect-ratio: 63 / 88; cursor: pointer; overflow: hidden; }
+.draw-card img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.draw-card .noimg { color: var(--muted); }
+.odds { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.odds h3 { font-size: 17px; margin-bottom: 6px; }
+.odds .fld { max-width: 320px; margin: 8px 0; }
+.odds-list { margin: 6px 0; padding-left: 20px; }
 .chat-note { text-align: center; font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
 .thinking { color: var(--muted); font-style: italic; }
 .suggest { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -288,7 +314,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.8.1';
+const VERSION = '1.9.0';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -615,6 +641,33 @@ function sortEntries(list) {
   });
 }
 const printKey = (c) => (sectionOf(c) === 'pokemon' ? `${c.name}|${c.attacks.map((a) => a.name).join(',')}` : c.name);
+// How many copies of each card (counting reprints together) all decks use, and which decks.
+function deckUsage(decks) {
+  const use = {};
+  for (const d of decks) for (const e of d.entries) {
+    if (isBasicEnergy(e.card)) continue;
+    const k = printKey(e.card);
+    (use[k] ||= { total: 0, decks: [] });
+    use[k].total += e.count;
+    const row = use[k].decks.find((x) => x.id === d.id);
+    if (row) row.count += e.count; else use[k].decks.push({ id: d.id, name: d.name, count: e.count });
+  }
+  return use;
+}
+// Cards in this deck that other decks also use, where the library doesn't have enough for all of them.
+function sharedConflicts(deck, decks, collection) {
+  const use = deckUsage(decks);
+  const seen = new Set(), out = [];
+  for (const e of deck.entries) {
+    if (isBasicEnergy(e.card)) continue;
+    const k = printKey(e.card);
+    if (seen.has(k)) continue; seen.add(k);
+    const u = use[k];
+    const owned = ownedCount(e.card, collection);
+    if (u && u.decks.length > 1 && u.total > owned) out.push({ card: e.card, owned, total: u.total, decks: u.decks });
+  }
+  return out;
+}
 function ownedCount(card, coll) {
   const k = printKey(card); let n = 0;
   for (const e of Object.values(coll)) if (e.card.id === card.id || printKey(e.card) === k) n += e.count;
@@ -849,6 +902,62 @@ function suggestionOutcomes(m) {
   if (!list.length) return '';
   const status = (x) => (x.done ? (x.action === 'remove' ? 'removed' : 'added') : x.dismissed ? 'passed' : 'no action yet');
   return `\n\n[Suggestions and what we did: ${list.map((x) => `${x.action === 'remove' ? '-' : '+'}${x.count} ${x.name} (${status(x)})`).join('; ')}]`;
+}
+
+/* ---------- Card scanning (Gemini reads a photo of cards) ---------- */
+const SCAN_PROMPT = `Identify every Pokémon TCG card you can see in this photo (it may be one card or a binder page of several).
+For each different card, give:
+- name: the card name exactly as printed (include "ex", "V", "Mega" etc.)
+- setCode: the set code printed near the bottom, like TWM, PAL, SVI or MEG (empty if you can't read it)
+- number: the collector number before the slash, like 128 in 128/167 (empty if you can't read it)
+- count: how many copies of that exact card are in the photo
+Only list real cards you can actually see. If a card is too blurry to name, skip it.`;
+const scanModels = {};
+function getScanModel(modelName) {
+  scanModels[modelName] ||= (async () => {
+    const app = await getFirebaseApp();
+    const { getAI, getGenerativeModel, GoogleAIBackend, Schema } = await import(FB + 'firebase-ai.js');
+    const schema = Schema.object({ properties: { cards: Schema.array({ items: Schema.object({
+      properties: { name: Schema.string(), setCode: Schema.string(), number: Schema.string(), count: Schema.integer() },
+      optionalProperties: ['setCode', 'number'] }) }) } });
+    return getGenerativeModel(getAI(app, { backend: new GoogleAIBackend() }), { model: modelName,
+      generationConfig: { responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 8192 } });
+  })();
+  scanModels[modelName].catch(() => { delete scanModels[modelName]; });
+  return scanModels[modelName];
+}
+// Shrink big phone photos before sending (faster, and well within free limits).
+function photoToJpeg(file, maxSide = 1600) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(img.src);
+      resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    img.onerror = () => reject(new Error('That file couldn’t be opened as a picture.'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+async function scanCardPhoto(file) {
+  const data = await photoToJpeg(file);
+  const contents = [{ role: 'user', parts: [{ inlineData: { mimeType: 'image/jpeg', data } }, { text: SCAN_PROMPT }] }];
+  let result;
+  while (true) {
+    const name = currentCoachModel();
+    try { result = await (await getScanModel(name)).generateContent({ contents }); break; }
+    catch (e) {
+      if (((isQuotaError(e) && !isPerMinute(e)) || isMissingModel(e)) && modelIndex < COACH_MODELS.length - 1) { modelIndex++; continue; }
+      console.error(e); throw new Error(friendlyCoachError(e));
+    }
+  }
+  let found = [];
+  try { found = JSON.parse(result.response.text().replace(/^\s*```(?:json)?|```\s*$/g, '')).cards || []; }
+  catch { throw new Error('The scan came back unreadable. Try again with a clearer, closer photo.'); }
+  return found.filter((c) => c && c.name).map((c) => ({ name: String(c.name).trim(), setCode: String(c.setCode || '').trim().toUpperCase(), number: String(c.number || '').replace(/^0+(?=\d)/, '').trim(), count: Math.max(1, Number(c.count) || 1) }));
 }
 
 function friendlyCoachError(e) {
@@ -1116,7 +1225,9 @@ function ImportBox({ title, hint, actions, onDone }) {
 }
 
 /* ---------- Deck tab ---------- */
-function DeckView({ deck, collection, stats, onOpen, onImport }) {
+function DeckView({ deck, decks, collection, stats, onOpen, onImport }) {
+  const [tester, setTester] = useState(false);
+  const conflicts = useMemo(() => sharedConflicts(deck, decks, collection), [deck, decks, collection]);
   const [copied, setCopied] = useState(false);
   const [showImport, setShowImport] = useState(deck.entries.length === 0);
   async function copy() {
@@ -1136,9 +1247,16 @@ function DeckView({ deck, collection, stats, onOpen, onImport }) {
       <div class="row end">
         <button class="btn ghost" onClick=${() => setShowImport(!showImport)}>${showImport ? 'Hide import' : 'Import list'}</button>
         <button class="btn ghost" onClick=${copy} disabled=${!deck.entries.length}>${copied ? 'Copied' : 'Copy list'}</button>
+        <button class="btn ghost" onClick=${() => setTester(true)} disabled=${!stats.total}>Test draw</button>
       </div>
     </div>
     ${stats.issues.length > 0 && stats.total > 0 && html`<ul class="issues">${stats.issues.map((i) => html`<li>${i}</li>`)}</ul>`}
+    ${conflicts.length > 0 && html`<details class="shared">
+      <summary><b>Shared with other decks:</b> ${conflicts.length} card${conflicts.length === 1 ? '' : 's'} you’d need more copies of to keep all these decks built at once</summary>
+      <ul>${conflicts.map((c) => html`<li><button class="linkbtn" onClick=${() => onOpen(c.card)}>${c.card.name}</button>${`: ${c.decks.map((d) => `${d.count} in ${d.id === deck.id ? 'this deck' : d.name}`).join(', ')}. Your library has ${c.owned}, so you’re ${c.total - c.owned} short.`}</li>`)}</ul>
+      <p class="small muted">Only counts what’s in your Card Library, and skips basic Energy.</p>
+    </details>`}
+    ${tester && html`<${DrawTester} deck=${deck} onOpen=${onOpen} onClose=${() => setTester(false)} />`}
     ${showImport && html`<${ImportBox} title="Import a decklist"
       hint="Paste a list exported from Limitless, Pokémon TCG Live, or a chat. The badges will show which cards you already own."
       actions=${[{ mode: 'replace', label: 'Replace this deck', primary: true }, { mode: 'add', label: 'Add to this deck' }]}
@@ -1154,6 +1272,114 @@ function DeckView({ deck, collection, stats, onOpen, onImport }) {
           </div>`;
         })}
   </section>`;
+}
+
+/* ---------- Opening-hand tester ---------- */
+// Exact odds with the hypergeometric formula: chance of at least one of `k` copies in `n` cards drawn from `N`.
+function logChoose(n, r) { if (r < 0 || r > n) return -Infinity; let s = 0; for (let i = 1; i <= r; i++) s += Math.log(n - r + i) - Math.log(i); return s; }
+const atLeastOne = (N, k, n) => (k <= 0 ? 0 : 1 - Math.exp(logChoose(N - k, n) - logChoose(N, n)));
+const pct = (x) => `${Math.round(x * 100)}%`;
+function shuffle(arr) { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+const isBasicMon = (c) => sectionOf(c) === 'pokemon' && c.subtypes.includes('Basic');
+
+function DrawTester({ deck, onOpen, onClose }) {
+  useEscape(onClose);
+  const pile = useMemo(() => deck.entries.flatMap((e) => Array.from({ length: e.count }, (_, i) => ({ ...e.card, _k: `${e.card.id}-${i}` }))), [deck]);
+  const N = pile.length;
+  const basics = pile.filter(isBasicMon).length;
+  const [game, setGame] = useState(null);
+  const [showPrizes, setShowPrizes] = useState(false);
+  const [pick, setPick] = useState('');
+  function newHand() {
+    let mulligans = 0, cards;
+    if (!basics) { setGame({ error: 'This deck has no Basic Pokémon, so every hand would be a mulligan.' }); return; }
+    while (true) { cards = shuffle(pile); if (cards.slice(0, 7).some(isBasicMon)) break; mulligans++; }
+    setShowPrizes(false);
+    setGame({ hand: cards.slice(0, 7), prizes: cards.slice(7, 13), deck: cards.slice(13), mulligans });
+  }
+  useEffect(newHand, []);
+  const draw = () => setGame((g) => (g?.deck?.length ? { ...g, hand: [...g.hand, g.deck[0]], deck: g.deck.slice(1) } : g));
+  const names = [...new Set(deck.entries.map((e) => e.card.name))].sort();
+  const copies = pick ? deck.entries.filter((e) => e.card.name === pick).reduce((n, e) => n + e.count, 0) : 0;
+  const mini = (c) => html`<button key=${c._k} class="draw-card" onClick=${() => onOpen(c)} title=${c.name}><${CardImage} key=${c._k} card=${c} /></button>`;
+  return html`<div class="scrim" onClick=${onClose}>
+    <div class="modal tester" role="dialog" aria-modal="true" aria-label="Test draw" onClick=${(e) => e.stopPropagation()}>
+      <div class="tester-head"><h2>Test draw</h2><button class="btn ghost small" onClick=${onClose}>Close</button></div>
+      ${N !== 60 && html`<p class="small warn">This deck has ${N} cards, so these odds are for ${N}, not 60.</p>`}
+      ${game?.error ? html`<p class="warn">${game.error}</p>` : game && html`
+        <p class="small">${game.mulligans ? html`<b>${game.mulligans} mulligan${game.mulligans === 1 ? '' : 's'}</b> before a hand with a Basic Pokémon. ` : ''}Opening hand (${game.hand.length} cards), ${game.deck.length} left in the deck.</p>
+        <div class="draw-row">${game.hand.map(mini)}</div>
+        <div class="row" style="margin:10px 0">
+          <button class="btn" onClick=${newHand}>New hand</button>
+          <button class="btn ghost" onClick=${draw} disabled=${!game.deck.length}>Draw a card</button>
+          <button class="btn ghost" onClick=${() => setShowPrizes(!showPrizes)}>${showPrizes ? 'Hide prizes' : 'Show the 6 prize cards'}</button>
+        </div>
+        ${showPrizes && html`<div class="draw-row prizes">${game.prizes.map(mini)}</div>`}`}
+      <div class="odds">
+        <h3>The odds</h3>
+        <p class="small">Chance your first 7 cards include a Basic Pokémon: <b>${pct(atLeastOne(N, basics, 7))}</b> (${basics} Basic Pokémon in the deck). The rest of the time you’d mulligan.</p>
+        <div class="fld"><label for="oddcard">Chance of drawing a card</label>
+          <select id="oddcard" value=${pick} onChange=${(e) => setPick(e.target.value)}><option value="">Pick a card…</option>${names.map((n) => html`<option value=${n}>${n}</option>`)}</select></div>
+        ${pick && html`<ul class="small odds-list">
+          <li>In your opening hand (7 cards): <b>${pct(atLeastOne(N, copies, 7))}</b></li>
+          <li>By your first turn (8 cards): <b>${pct(atLeastOne(N, copies, 8))}</b></li>
+          <li>By your second turn (9 cards): <b>${pct(atLeastOne(N, copies, 9))}</b></li>
+          <li>At least one copy stuck in your prizes: <b>${pct(atLeastOne(N, copies, 6))}</b></li>
+        </ul>
+        <p class="small muted">With ${copies} cop${copies === 1 ? 'y' : 'ies'} in ${N} cards. Search cards like Arven or Nest Ball make the real chances better than this.</p>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- Scan cards into the Card Library ---------- */
+function ScanCards({ collection, onAdd, onOpen }) {
+  const fileRef = useRef(null);
+  const [st, setSt] = useState({ busy: false, error: null, rows: null, msg: '' });
+  async function handle(file) {
+    if (!file) return;
+    setSt({ busy: true, error: null, rows: null, msg: '' });
+    try {
+      const found = await scanCardPhoto(file);
+      if (!found.length) throw new Error('No cards found in that photo. Try a closer shot in good light, with the bottom of each card visible.');
+      const resolved = await resolveLines(found.map((c) => ({ ...c, raw: `${c.count} ${c.name} ${c.setCode} ${c.number}`.trim() })));
+      setSt({ busy: false, error: null, msg: '', rows: resolved.map((r) => ({ ...r, include: !!r.card })) });
+    } catch (e) { setSt({ busy: false, error: e.message, rows: null, msg: '' }); }
+  }
+  const update = (i, patch) => setSt((s) => ({ ...s, rows: s.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
+  const chosen = (st.rows || []).filter((r) => r.include && r.card && r.count > 0);
+  async function addAll() {
+    await onAdd(chosen.map((r) => ({ card: r.card, count: r.count })));
+    setSt({ busy: false, error: null, rows: null, msg: `Added ${chosen.reduce((n, r) => n + r.count, 0)} cards to your library.` });
+  }
+  if (!COACH_READY) return null;
+  return html`<div class="import scan">
+    <h3>Scan cards</h3>
+    <p class="muted small">Take a photo of a card or a whole binder page. Make sure the bottom of each card (set code and number) is readable.</p>
+    <input ref=${fileRef} type="file" accept="image/*" capture="environment" hidden onChange=${(e) => { handle(e.target.files[0]); e.target.value = ''; }} />
+    <div class="row">
+      <button class="btn" disabled=${st.busy} onClick=${() => fileRef.current.click()}>${st.busy ? 'Reading the cards…' : st.rows ? 'Scan another photo' : 'Take or choose a photo'}</button>
+      ${st.rows && html`<button class="btn ghost" onClick=${() => setSt({ busy: false, error: null, rows: null, msg: '' })}>Cancel</button>`}
+    </div>
+    ${st.error && html`<p class="warn small">${st.error}</p>`}
+    ${st.msg && html`<p class="small muted">${st.msg}</p>`}
+    ${st.rows && html`<div class="scan-results">
+      <p class="small">Found ${st.rows.length} different card${st.rows.length === 1 ? '' : 's'}. Check them over, then add them.</p>
+      ${st.rows.map((r, i) => html`<div class=${`scan-row ${r.include ? '' : 'off'}`}>
+        ${r.card ? html`<${CardTile} card=${r.card} onOpen=${onOpen} />` : html`<div class="ghosted">${r.name}</div>`}
+        <div class="scan-body">
+          <strong>${r.card ? r.card.name : r.name}</strong>
+          <span class="small muted">${r.card ? `${r.card.setCode} ${r.card.number}` : `Read as: ${r.raw}`}${r.card ? `, ${ownedCount(r.card, collection)} already in library` : ''}</span>
+          ${r.card ? html`<div class="row">
+              <${Stepper} label="Copies" value=${r.count} onChange=${(n) => update(i, { count: n })} max=${60} />
+              <label class="check small"><input type="checkbox" checked=${r.include} onChange=${(e) => update(i, { include: e.target.checked })} /> Add</label>
+            </div>`
+            : html`<span class="small warn">Couldn’t match this card. Add it from Find cards instead.</span>`}
+        </div>
+      </div>`)}
+      <button class="btn" disabled=${!chosen.length} onClick=${addAll}>Add ${chosen.reduce((n, r) => n + r.count, 0)} cards to library</button>
+    </div>`}
+  </div>`;
 }
 
 /* ---------- Advanced search panel (Find cards and Card Library) ---------- */
@@ -1273,6 +1499,7 @@ function CollectionView({ collection, store, onOpen }) {
         <input ref=${fileRef} type="file" accept="application/json" hidden onChange=${(e) => { e.target.files[0] && restore(e.target.files[0]); e.target.value = ''; }} />
       </div>
     </div>
+    <${ScanCards} collection=${collection} onAdd=${importItems} onOpen=${onOpen} />
     <${ImportBox} title="Add cards to your library"
       hint="Paste a list in the same format as a decklist (count, name, set code, number). Use Find cards to add one at a time."
       actions=${[{ mode: 'add', label: 'Add to library', primary: true }]} onDone=${importItems} />
@@ -1690,7 +1917,7 @@ function App() {
 
     <div class="layout">
       <main>
-        ${tab === 'deck' && html`<${DeckView} key=${deck.id} deck=${deck} collection=${collection} stats=${stats} onOpen=${setModalCard} onImport=${importToDeck} />`}
+        ${tab === 'deck' && html`<${DeckView} key=${deck.id} deck=${deck} decks=${decks} collection=${collection} stats=${stats} onOpen=${setModalCard} onImport=${importToDeck} />`}
         ${tab === 'search' && html`<${SearchView} onOpen=${setModalCard} onAddDeck=${(c) => addToDeck(c)} onAddOwned=${(c) => store.setOwned(c, ownedExact(c) + 1)} ownedOf=${ownedExact} deckCountOf=${deckCountOf} onAddExtra=${(name) => setExtraForm({ name })} />`}
         ${tab === 'collection' && html`<${CollectionView} collection=${collection} store=${store} onOpen=${setModalCard} />`}
       </main>

@@ -141,6 +141,21 @@ Good to know:
 - GitHub may pause scheduled workflows in repositories with no activity for
   60 days, and emails you if it does. Turn it back on from the Actions tab.
 
+## 6. Put it on your home screen (optional)
+
+Deck Brews can sit on your phone or tablet's home screen with its own icon
+and open full screen, like a regular app. Make sure `manifest.webmanifest`
+and the `icons` folder are uploaded to your repository first.
+
+- **iPhone or iPad (Safari):** open the site, tap the **Share** button, then
+  **Add to Home Screen**.
+- **Android (Chrome):** open the site, tap the **⋮** menu, then **Add to
+  Home screen** or **Install app**.
+- **Computer (Chrome or Edge):** click the install icon at the right end of
+  the address bar, or the menu's **Install Deck Brews** option.
+
+It always loads the latest version from GitHub, so updates work the same way.
+
 ## Copy for Claude
 
 Under the coach there's a **Copy for Claude** button. It copies your current

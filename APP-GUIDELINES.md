@@ -47,6 +47,18 @@ an AI coach to find substitutes and understand the deck.
   cards from the "Add a missing card" form are stored in Firestore
   `customCards`. Both are searched and matched on import before TCGdex.
 - Formats: Standard, Expanded, and Casual (no legality checks).
+- Scan cards: `ScanCards` resizes the photo (`photoToJpeg`), sends it to the
+  coach's Gemini model with a response schema (`scanCardPhoto`), resolves the
+  results with `resolveLines()`, and shows a review list before anything is
+  added. It's hidden unless the coach is set up.
+- Shared-card warnings: `deckUsage()` / `sharedConflicts()` total copies across
+  all decks per card (reprints count together, basic Energy skipped) and
+  compare with the Card Library.
+- Test draw: `DrawTester` simulates hands (mulligan until a Basic) and shows
+  exact hypergeometric odds (`atLeastOne()`).
+- Home-screen install: `manifest.webmanifest` and `icons/` (navy background,
+  three fanned cards in the section colors). No service worker on purpose, so
+  the app never shows a stale cached version.
 - Tabs: Deck, Find cards, Card Library (the family's collection; data still
   lives in the Firestore `collection` path).
 - Advanced search: `blankFilters()` defines the filter fields, `CardFilters`

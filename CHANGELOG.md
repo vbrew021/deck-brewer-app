@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.9.0 (October 10, 2026)
+- Added: Scan cards (Card Library). Take a photo of a card or a binder page;
+  the coach's Gemini model reads the cards, matches them, and lets you check
+  them over before adding them to your library. Needs the coach set up.
+- Added: shared-card warnings on the Deck tab, listing cards this deck and
+  other decks both use when your library doesn't have enough copies for all.
+- Added: Test draw on the Deck tab. Draw opening hands (with mulligans),
+  draw more cards, see the 6 prize cards, and get the odds of a Basic in your
+  first 7 and of drawing any card by your first or second turn.
+- Added: install Deck Brews on your home screen with its own icon
+  (SETUP.md, step 6). Upload `manifest.webmanifest` and the `icons` folder.
+- No Firebase changes needed.
+
 ## 1.8.1 (October 10, 2026)
 - Changed: renamed the app from Deck Brewer to Deck Brews.
 - The Firestore data path stays `deckbrewer`, so all saved decks, cards,
