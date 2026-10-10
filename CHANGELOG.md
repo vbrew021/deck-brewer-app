@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.10.0 (October 10, 2026)
+- Added: Want list tab. It lists every card your chosen decks need that isn't
+  in your Card Library (build all at once, or one at a time), plus cards you
+  add yourself from a card's details or the coach's "Want it" link. Shows
+  TCGplayer market prices and an estimated total, "Copy for TCGplayer" for
+  Mass Entry, and "Got it" to move cards into your library.
+- Added: Set checklists in Card Library. Pick a set to see every card in
+  number order, tap + or − to record what you have, and track your progress.
+- Added: Compare on the Deck tab, showing which cards differ between two decks.
+- Fixed: checkboxes next to search boxes no longer stretch away from their labels.
+- No Firebase changes needed (the want list lives under the existing rules).
+
+## 1.9.1 (October 10, 2026)
+- Added: "Wrong version? Pick another" on scanned cards, showing every
+  printing of the card (newest first) to choose from. Cards the scan couldn't
+  match get "Find this card", where you can type the right name.
+- Added: "Other versions" in each card's details. Picking a different printing
+  moves this deck's copies and your Card Library's copies to it (after
+  asking).
+- No Firebase changes needed.
+
 ## 1.9.0 (October 10, 2026)
 - Added: Scan cards (Card Library). Take a photo of a card or a binder page;
   the coach's Gemini model reads the cards, matches them, and lets you check

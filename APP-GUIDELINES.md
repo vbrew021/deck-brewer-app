@@ -51,6 +51,11 @@ an AI coach to find substitutes and understand the deck.
   coach's Gemini model with a response schema (`scanCardPhoto`), resolves the
   results with `resolveLines()`, and shows a review list before anything is
   added. It's hidden unless the coach is set up.
+- Versions: `findVersions()` lists every printing of a card name (saved card
+  data, extra cards, then TCGdex live; falls back to "name contains" when
+  nothing matches exactly). `VersionPicker` is used by scan review rows and by
+  the card details window, where `switchVersion()` moves deck and library
+  copies to the chosen printing.
 - Shared-card warnings: `deckUsage()` / `sharedConflicts()` total copies across
   all decks per card (reprints count together, basic Energy skipped) and
   compare with the Card Library.
@@ -60,7 +65,18 @@ an AI coach to find substitutes and understand the deck.
   three fanned cards in the section colors). No service worker on purpose, so
   the app never shows a stale cached version.
 - Tabs: Deck, Find cards, Card Library (the family's collection; data still
-  lives in the Firestore `collection` path).
+  lives in the Firestore `collection` path; has "My cards" and "Set
+  checklists" views), and Want list.
+- Want list: `buildWantList()` totals what the chosen decks need per card
+  (reprints together, basic Energy skipped; "all at once" sums decks, "one at
+  a time" takes the biggest), subtracts the Card Library, and adds the
+  family's own wants. Prices come from `fetchPrices()` a few at a time
+  (`mapLimit()`), using the cheapest version's market price.
+- Set checklists: `SetChecklist` lists a set's cards from the saved card data
+  (TCGdex live as a fallback) with +/− buttons that change this exact print's
+  library count.
+- Compare: `DeckCompare` lines up two decks by card (reprints together) and
+  shows the differences.
 - Advanced search: `blankFilters()` defines the filter fields, `CardFilters`
   is the shared panel, `matchesFilters()` applies every filter locally (all of
   Card Library; the rest of Find cards), and `searchCards()` sends what TCGdex
@@ -145,5 +161,7 @@ an AI coach to find substitutes and understand the deck.
 - `chats/{deckId}`: `{ messages, updatedAt }`, the coach chat saved with each
   deck (last 40 messages). Deleted with its deck; not copied by Copy deck.
 - `customCards/{id}`: family-added extra cards (ids start with `custom-`).
+- `wants/{cardId}`: `{ card, count }`, cards the family added to the want list
+  by hand (deck needs are calculated, not stored).
 - `settings/coach`: `{ notes, updatedAt }`, the shared coach notes (up to
   1,500 characters), sent with every coach question.

@@ -190,6 +190,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .searchbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
 .searchbar input { flex: 1; min-width: 200px; }
 .check { display: flex; gap: 6px; align-items: center; font-size: 14px; }
+.searchbar input[type="checkbox"], .check input[type="checkbox"] { flex: none; min-width: 0; width: auto; }
 .more { display: block; margin: 16px auto 0; }
 
 /* Assistant */
@@ -263,6 +264,38 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .odds h3 { font-size: 17px; margin-bottom: 6px; }
 .odds .fld { max-width: 320px; margin: 8px 0; }
 .odds-list { margin: 6px 0; padding-left: 20px; }
+.picker-scrim { z-index: 20; }
+.modal.picker { display: block; max-width: 900px; }
+.version-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); margin-top: 6px; }
+.version { display: flex; flex-direction: column; gap: 4px; align-items: stretch; text-align: left; padding: 6px; border: 2px solid transparent; border-radius: var(--r-md); background: var(--soft); cursor: pointer; }
+.version:hover { border-color: var(--line); }
+.version.current { border-color: var(--trainer); }
+.version-img { display: block; aspect-ratio: 63 / 88; background: var(--tile-bg); border-radius: 6px; overflow: hidden; }
+.version-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.version-img .noimg { color: var(--muted); }
+.version-name { font-weight: 600; font-size: 13px; }
+.version-tag { color: var(--trainer); font-weight: 600; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--paper); border-radius: var(--r-md); margin-bottom: 12px; }
+.seg button { border: 0; background: none; padding: 7px 14px; border-radius: var(--r-sm); font-weight: 600; color: var(--muted); cursor: pointer; }
+.seg button.on { background: var(--btn); color: #fff; }
+.progress { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 14px; }
+.progress-bar { height: 10px; background: var(--paper); border-radius: 99px; overflow: hidden; }
+.progress-bar span { display: block; height: 100%; background: var(--have); }
+.check-tile.missing .pocket { opacity: .45; }
+.check-num { min-width: 34px; text-align: center; color: var(--muted); }
+.want-total { font-size: 14px; }
+.want-controls { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: flex-end; margin-bottom: 12px; }
+.want-controls select { background: var(--paper); border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 7px 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 99px; background: var(--paper); border: 1.5px solid var(--line); font-size: 13px; cursor: pointer; }
+.chip.on { border-color: var(--trainer); }
+.chip input { margin: 0; }
+.want-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.want-row { display: grid; grid-template-columns: 90px 1fr; gap: 12px; padding: 10px; background: var(--paper); border-radius: var(--r-md); }
+.want-body { display: flex; flex-direction: column; gap: 4px; }
+.compare td, .compare th { text-align: left; }
+.compare tr.more td:last-child { color: var(--need); }
+.compare tr.less td:last-child { color: var(--have); }
 .chat-note { text-align: center; font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
 .thinking { color: var(--muted); font-style: italic; }
 .suggest { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -314,7 +347,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.9.0';
+const VERSION = '1.10.0';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -728,10 +761,10 @@ const collectionText = (coll) => Object.values(coll).sort((a, b) => a.card.name.
 /* ---------- Storage: Firebase (shared) or this device only ---------- */
 const cleanForSave = (v) => JSON.parse(JSON.stringify(v)); // Firestore can't store undefined
 function createLocalStore() {
-  let decks = load('db.local.decks', {}), coll = load('db.local.collection', {}), custom = load('db.local.custom', {}), notes = load('db.local.notes', '');
+  let decks = load('db.local.decks', {}), coll = load('db.local.collection', {}), custom = load('db.local.custom', {}), notes = load('db.local.notes', ''), wants = load('db.local.wants', {});
   const subs = [];
-  const snapshot = () => ({ decks: { ...decks }, collection: { ...coll }, customCards: { ...custom }, coachNotes: notes, loaded: true });
-  const emit = () => { save('db.local.decks', decks); save('db.local.collection', coll); save('db.local.custom', custom); save('db.local.notes', notes); subs.forEach((f) => f(snapshot())); };
+  const snapshot = () => ({ decks: { ...decks }, collection: { ...coll }, customCards: { ...custom }, coachNotes: notes, wants: { ...wants }, loaded: true });
+  const emit = () => { save('db.local.decks', decks); save('db.local.collection', coll); save('db.local.custom', custom); save('db.local.notes', notes); save('db.local.wants', wants); subs.forEach((f) => f(snapshot())); };
   return {
     mode: 'local',
     subscribe(f) { subs.push(f); f(snapshot()); return () => {}; },
@@ -740,6 +773,7 @@ function createLocalStore() {
     deleteChat: async (deckId) => { try { localStorage.removeItem('db.local.chat.' + deckId); } catch {} },
     saveCustomCard(card) { custom[card.id] = cleanForSave(card); emit(); },
     saveCoachNotes: async (text) => { notes = String(text || '').slice(0, NOTES_LIMIT); emit(); },
+    setWant: async (card, count) => { if (count <= 0) delete wants[card.id]; else wants[card.id] = cleanForSave({ card, count }); emit(); },
     deleteCustomCard(id) { delete custom[id]; emit(); },
     saveDeck(d) { decks[d.id] = d; emit(); },
     deleteDeck(id) { delete decks[id]; emit(); },
@@ -774,6 +808,7 @@ async function createFirebaseStore(code) {
   const chatCol = fs.collection(db, 'deckbrewer', code, 'chats');
   const customCol = fs.collection(db, 'deckbrewer', code, 'customCards');
   const notesDoc = fs.doc(db, 'deckbrewer', code, 'settings', 'coach');
+  const wantsCol = fs.collection(db, 'deckbrewer', code, 'wants');
   try { await fs.getDocs(fs.query(decksCol, fs.limit(1))); }
   catch (e) {
     if (e.code === 'permission-denied') throw new Error('That family code didn’t match. Check it against the code in your Firebase rules.');
@@ -789,20 +824,22 @@ async function createFirebaseStore(code) {
   return {
     mode: 'firebase',
     subscribe(f, onError) {
-      let state = { decks: {}, collection: {}, customCards: {}, coachNotes: '', loaded: false }, gotDecks = false, gotColl = false;
+      let state = { decks: {}, collection: {}, customCards: {}, coachNotes: '', wants: {}, loaded: false }, gotDecks = false, gotColl = false;
       const push = () => f({ ...state, loaded: gotDecks && gotColl });
       const err = () => onError?.('Lost the connection to Firebase. Changes will sync when it’s back.');
       const u1 = fs.onSnapshot(decksCol, (s) => { const d = {}; s.forEach((x) => (d[x.id] = x.data())); state = { ...state, decks: d }; gotDecks = true; push(); }, err);
       const u2 = fs.onSnapshot(collCol, (s) => { const c = {}; s.forEach((x) => (c[x.id] = x.data())); state = { ...state, collection: c }; gotColl = true; push(); }, err);
       const u3 = fs.onSnapshot(customCol, (s) => { const c = {}; s.forEach((x) => (c[x.id] = x.data())); state = { ...state, customCards: c }; push(); }, () => {});
       const u4 = fs.onSnapshot(notesDoc, (d) => { state = { ...state, coachNotes: d.exists() ? d.data().notes || '' : '' }; push(); }, () => {});
-      return () => { u1(); u2(); u3(); u4(); };
+      const u5 = fs.onSnapshot(wantsCol, (q) => { const w = {}; q.forEach((x) => (w[x.id] = x.data())); state = { ...state, wants: w }; push(); }, () => {});
+      return () => { u1(); u2(); u3(); u4(); u5(); };
     },
     async loadChat(deckId) { const d = await fs.getDoc(fs.doc(chatCol, deckId)); return d.exists() ? d.data().messages || [] : []; },
     saveChat: (deckId, messages) => fs.setDoc(fs.doc(chatCol, deckId), { messages: cleanForSave(messages), updatedAt: Date.now() }),
     deleteChat: (deckId) => fs.deleteDoc(fs.doc(chatCol, deckId)),
     saveCustomCard: (card) => fs.setDoc(fs.doc(customCol, card.id), cleanForSave(card)),
     saveCoachNotes: (text) => fs.setDoc(notesDoc, { notes: String(text || '').slice(0, NOTES_LIMIT), updatedAt: Date.now() }),
+    setWant: (card, count) => (count <= 0 ? fs.deleteDoc(fs.doc(wantsCol, card.id)) : fs.setDoc(fs.doc(wantsCol, card.id), cleanForSave({ card, count }))),
     deleteCustomCard: (id) => fs.deleteDoc(fs.doc(customCol, id)),
     saveDeck: (d) => fs.setDoc(fs.doc(decksCol, d.id), d),
     deleteDeck: (id) => fs.deleteDoc(fs.doc(decksCol, id)),
@@ -1108,8 +1145,9 @@ function useEscape(onClose) {
   useEffect(() => { const k = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
 }
 
-function CardModal({ card, deckCount, ownedExact, onDeck, onOwned, onClose, onDeleteExtra }) {
-  useEscape(onClose);
+function CardModal({ card, deckCount, ownedExact, onDeck, onOwned, onClose, onDeleteExtra, onSwitchVersion, wantCount, onWant }) {
+  const [picking, setPicking] = useState(false);
+  useEscape(picking ? () => {} : onClose);
   return html`<div class="scrim" onClick=${onClose}>
     <div class="modal" role="dialog" aria-modal="true" aria-label=${card.name} onClick=${(e) => e.stopPropagation()}>
       <${CardImage} card=${card} large=${true} />
@@ -1124,11 +1162,15 @@ function CardModal({ card, deckCount, ownedExact, onDeck, onOwned, onClose, onDe
         <div class="modal-controls">
           <${Stepper} label="In this deck" value=${deckCount} onChange=${onDeck} max=${60} />
           <${Stepper} label="In library (this print)" value=${ownedExact} onChange=${onOwned} />
+          <${Stepper} label="On my want list" value=${wantCount} onChange=${onWant} />
         </div>
         <div class="row">
           <button class="btn ghost" onClick=${onClose}>Close</button>
+          <button class="btn ghost" onClick=${() => setPicking(true)}>Other versions</button>
           ${card.custom && html`<button class="btn ghost danger" onClick=${() => onDeleteExtra(card)}>Remove this extra card</button>`}
         </div>
+        ${picking && html`<${VersionPicker} name=${card.name} currentId=${card.id} title="Other versions of this card"
+          onClose=${() => setPicking(false)} onPick=${(c) => { setPicking(false); if (c.id !== card.id) onSwitchVersion(card, c); }} />`}
       </div>
     </div>
   </div>`;
@@ -1227,6 +1269,7 @@ function ImportBox({ title, hint, actions, onDone }) {
 /* ---------- Deck tab ---------- */
 function DeckView({ deck, decks, collection, stats, onOpen, onImport }) {
   const [tester, setTester] = useState(false);
+  const [comparing, setComparing] = useState(false);
   const conflicts = useMemo(() => sharedConflicts(deck, decks, collection), [deck, decks, collection]);
   const [copied, setCopied] = useState(false);
   const [showImport, setShowImport] = useState(deck.entries.length === 0);
@@ -1248,6 +1291,7 @@ function DeckView({ deck, decks, collection, stats, onOpen, onImport }) {
         <button class="btn ghost" onClick=${() => setShowImport(!showImport)}>${showImport ? 'Hide import' : 'Import list'}</button>
         <button class="btn ghost" onClick=${copy} disabled=${!deck.entries.length}>${copied ? 'Copied' : 'Copy list'}</button>
         <button class="btn ghost" onClick=${() => setTester(true)} disabled=${!stats.total}>Test draw</button>
+        <button class="btn ghost" onClick=${() => setComparing(true)} disabled=${decks.length < 2}>Compare</button>
       </div>
     </div>
     ${stats.issues.length > 0 && stats.total > 0 && html`<ul class="issues">${stats.issues.map((i) => html`<li>${i}</li>`)}</ul>`}
@@ -1257,6 +1301,7 @@ function DeckView({ deck, decks, collection, stats, onOpen, onImport }) {
       <p class="small muted">Only counts what’s in your Card Library, and skips basic Energy.</p>
     </details>`}
     ${tester && html`<${DrawTester} deck=${deck} onOpen=${onOpen} onClose=${() => setTester(false)} />`}
+    ${comparing && html`<${DeckCompare} deck=${deck} decks=${decks} onOpen=${onOpen} onClose=${() => setComparing(false)} />`}
     ${showImport && html`<${ImportBox} title="Import a decklist"
       hint="Paste a list exported from Limitless, Pokémon TCG Live, or a chat. The badges will show which cards you already own."
       actions=${[{ mode: 'replace', label: 'Replace this deck', primary: true }, { mode: 'add', label: 'Add to this deck' }]}
@@ -1272,6 +1317,217 @@ function DeckView({ deck, decks, collection, stats, onOpen, onImport }) {
           </div>`;
         })}
   </section>`;
+}
+
+/* ---------- Want list ---------- */
+// Run async jobs a few at a time (keeps price lookups polite to the free card database).
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length); let i = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => { while (i < items.length) { const j = i++; try { out[j] = await fn(items[j]); } catch { out[j] = null; } } }));
+  return out;
+}
+// Cheapest market price across a card's versions (normal, reverse holo...), falling back to mid.
+const marketPrice = (p) => { const vals = (p?.rows || []).map((r) => r.market ?? r.mid).filter((v) => v != null); return vals.length ? Math.min(...vals) : null; };
+
+// Cards the chosen decks need that the Card Library doesn't have, plus cards added by hand.
+function buildWantList(decks, selectedIds, mode, collection, wants) {
+  const need = {};
+  for (const d of decks.filter((x) => selectedIds.includes(x.id))) {
+    const perDeck = {};
+    for (const e of d.entries) {
+      if (isBasicEnergy(e.card)) continue;
+      const k = printKey(e.card);
+      (perDeck[k] ||= { card: e.card, count: 0 }).count += e.count;
+    }
+    for (const [k, v] of Object.entries(perDeck)) {
+      const row = (need[k] ||= { key: k, card: v.card, needed: 0, decks: [] });
+      row.needed = mode === 'all' ? row.needed + v.count : Math.max(row.needed, v.count);
+      row.decks.push(`${d.name} (${v.count})`);
+    }
+  }
+  const rows = {};
+  for (const r of Object.values(need)) {
+    const missing = r.needed - ownedCount(r.card, collection);
+    if (missing > 0) rows[r.key] = { ...r, missing, manual: 0 };
+  }
+  for (const w of Object.values(wants || {})) {
+    const k = printKey(w.card);
+    if (rows[k]) rows[k].manual += w.count;
+    else rows[k] = { key: k, card: w.card, needed: 0, missing: 0, manual: w.count, decks: [] };
+  }
+  return Object.values(rows).map((r) => ({ ...r, qty: r.missing + r.manual }));
+}
+
+function WantListView({ decks, collection, wants, store, onOpen }) {
+  const [sel, setSel] = usePref('db.wantDecks', null); // null = all decks
+  const [mode, setMode] = usePref('db.wantMode', 'all');
+  const [sort, setSort] = useState('price');
+  const [prices, setPrices] = useState({});
+  const [copied, setCopied] = useState('');
+  const selectedIds = sel ? sel.filter((id) => decks.some((d) => d.id === id)) : decks.map((d) => d.id);
+  const rows = useMemo(() => buildWantList(decks, selectedIds, mode, collection, wants), [decks, selectedIds.join(), mode, collection, wants]);
+  // Look up prices for cards we haven't priced yet.
+  useEffect(() => {
+    const todo = rows.filter((r) => !(r.card.id in prices));
+    if (!todo.length) return;
+    let live = true;
+    mapLimit(todo, 4, (r) => fetchPrices(r.card)).then((res) => {
+      if (!live) return;
+      setPrices((p) => { const n = { ...p }; todo.forEach((r, i) => { n[r.card.id] = marketPrice(res[i]); }); return n; });
+    });
+    return () => { live = false; };
+  }, [rows]);
+  const sorted = [...rows].sort((a, b) => sort === 'name' ? a.card.name.localeCompare(b.card.name)
+    : ((prices[b.card.id] ?? -1) * b.qty) - ((prices[a.card.id] ?? -1) * a.qty) || a.card.name.localeCompare(b.card.name));
+  const totalQty = rows.reduce((n, r) => n + r.qty, 0);
+  const priced = rows.filter((r) => prices[r.card.id] != null);
+  const total = priced.reduce((n, r) => n + prices[r.card.id] * r.qty, 0);
+  const pending = rows.some((r) => !(r.card.id in prices));
+  const toggleDeck = (id) => { const cur = new Set(selectedIds); cur.has(id) ? cur.delete(id) : cur.add(id); setSel([...cur]); };
+  async function gotIt(r) {
+    await store.setOwned(r.card, (collection[r.card.id]?.count || 0) + r.qty);
+    if (r.manual) await store.setWant(r.card, 0);
+  }
+  async function copy(kind) {
+    const text = kind === 'tcgplayer'
+      ? sorted.map((r) => `${r.qty} ${r.card.name}`).join('\n')
+      : sorted.map((r) => `${r.qty} ${r.card.name} ${r.card.setCode} ${r.card.number}`).join('\n');
+    try { await navigator.clipboard.writeText(text); } catch { window.prompt('Copy this list:', text); }
+    setCopied(kind); setTimeout(() => setCopied(''), 4000);
+  }
+  return html`<section class="wants">
+    <div class="statbar">
+      <div class="count60"><b>${totalQty}</b><span>card${totalQty === 1 ? '' : 's'} wanted</span></div>
+      <div class="want-total">${priced.length ? html`About <b>${money(total)}</b> at TCGplayer market prices${priced.length < rows.length ? ` (${rows.length - priced.length} without a price)` : ''}` : pending && rows.length ? 'Looking up prices…' : ''}</div>
+      <div class="row end">
+        <button class="btn ghost" disabled=${!rows.length} onClick=${() => copy('tcgplayer')}>${copied === 'tcgplayer' ? 'Copied' : 'Copy for TCGplayer'}</button>
+        <button class="btn ghost" disabled=${!rows.length} onClick=${() => copy('list')}>${copied === 'list' ? 'Copied' : 'Copy as list'}</button>
+      </div>
+    </div>
+    ${copied === 'tcgplayer' && html`<p class="small muted">Now open <a class="tcgp" href="https://www.tcgplayer.com/massentry" target="_blank" rel="noopener">TCGplayer Mass Entry</a>, choose Pokémon, paste the list, and it finds sellers for everything at once.</p>`}
+    <div class="want-controls">
+      <div><span class="small muted">Count cards needed for:</span>
+        <div class="chips">${decks.map((d) => html`<label class=${`chip ${selectedIds.includes(d.id) ? 'on' : ''}`}><input type="checkbox" checked=${selectedIds.includes(d.id)} onChange=${() => toggleDeck(d.id)} />${d.name}</label>`)}</div></div>
+      <div class="row">
+        <select value=${mode} onChange=${(e) => setMode(e.target.value)} aria-label="How to count">
+          <option value="all">Build all of them at once</option><option value="one">Build one at a time</option>
+        </select>
+        <select value=${sort} onChange=${(e) => setSort(e.target.value)} aria-label="Sort">
+          <option value="price">Most expensive first</option><option value="name">Name (A–Z)</option>
+        </select>
+      </div>
+    </div>
+    ${!rows.length ? html`<p class="empty">Nothing on your want list. Your Card Library has everything the chosen decks need. Add cards by hand from any card’s details (“Want list”).</p>`
+      : html`<div class="want-list">${sorted.map((r) => html`<div class="want-row" key=${r.key}>
+        <${CardTile} card=${r.card} onOpen=${onOpen} />
+        <div class="want-body">
+          <strong>${r.qty} × ${r.card.name}</strong>
+          <span class="small muted">${r.card.setCode} ${r.card.number}${r.card.setName ? ` · ${r.card.setName}` : ''}</span>
+          <span class="small">${r.missing ? `Needed for ${r.decks.join(', ')}; library has ${ownedCount(r.card, collection)}.` : ''}${r.manual ? `${r.missing ? ' ' : ''}Added by you (${r.manual}).` : ''}</span>
+          <span class="small">${prices[r.card.id] != null ? html`${money(prices[r.card.id])} each, <b>${money(prices[r.card.id] * r.qty)}</b>` : r.card.id in prices ? 'No price data' : 'Price…'}
+            ${' '}<a class="tcgp small" href=${tcgplayerUrl(r.card)} target="_blank" rel="noopener">TCGplayer</a></span>
+          <div class="row">
+            <button class="mini" onClick=${() => gotIt(r)}>Got ${r.qty === 1 ? 'it' : 'them'}</button>
+            ${r.manual > 0 && html`<button class="mini ghost" onClick=${() => store.setWant(r.card, 0)}>Remove my want</button>`}
+          </div>
+        </div>
+      </div>`)}</div>`}
+    <p class="small muted">“Got it” adds the cards to your Card Library. Basic Energy is left out. Prices are TCGplayer market prices from TCGdex and may be a little behind.</p>
+  </section>`;
+}
+
+/* ---------- Card versions (other printings of the same card) ---------- */
+async function findVersions(query) {
+  const q = normName(query || '').trim();
+  if (!q) return [];
+  await localReady;
+  const out = new Map();
+  const add = (c) => { if (c && !out.has(c.id)) out.set(c.id, c); };
+  // Exact name first, from the saved card data and then TCGdex (which also has older sets).
+  (LOCAL?.byName[q.toLowerCase()] || []).forEach(add);
+  EXTRA_CARDS.filter((c) => c.name.toLowerCase() === q.toLowerCase()).forEach(add);
+  try { (await fetchCards({ name: `eq:${cleanFilter(q)}` }, 250)).map(slimCard).forEach(add); } catch {}
+  // Nothing with that exact name? Fall back to names that contain it (helps with misread names).
+  if (!out.size) {
+    const ql = q.toLowerCase();
+    (LOCAL?.cards || []).filter((c) => c.name.toLowerCase().includes(ql)).slice(0, 120).forEach(add);
+    EXTRA_CARDS.filter((c) => c.name.toLowerCase().includes(ql)).forEach(add);
+    try { (await fetchCards({ name: cleanFilter(q) }, 120)).map(slimCard).forEach(add); } catch {}
+  }
+  return [...out.values()].sort((a, b) => newestFirst(a, b) || numKey(a.number).localeCompare(numKey(b.number)));
+}
+
+function VersionPicker({ name, currentId, onPick, onClose, title = 'Choose the right version' }) {
+  const [q, setQ] = useState(name || '');
+  const [st, setSt] = useState({ busy: true, list: [], error: null });
+  async function run(query) {
+    setSt({ busy: true, list: [], error: null });
+    try { setSt({ busy: false, list: await findVersions(query), error: null }); }
+    catch (e) { setSt({ busy: false, list: [], error: e.message }); }
+  }
+  useEffect(() => { run(name); }, []);
+  useEffect(() => { const k = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }; window.addEventListener('keydown', k, true); return () => window.removeEventListener('keydown', k, true); }, [onClose]);
+  return html`<div class="scrim picker-scrim" onClick=${(e) => { e.stopPropagation(); onClose(); }}>
+    <div class="modal picker" role="dialog" aria-modal="true" aria-label=${title} onClick=${(e) => e.stopPropagation()}>
+      <div class="tester-head"><h2>${title}</h2><button class="btn ghost small" onClick=${onClose}>Close</button></div>
+      <form class="searchbar" onSubmit=${(e) => { e.preventDefault(); run(q); }}>
+        <input value=${q} onInput=${(e) => setQ(e.target.value)} aria-label="Card name" placeholder="Card name" />
+        <button class="btn" disabled=${st.busy}>${st.busy ? 'Looking…' : 'Search'}</button>
+      </form>
+      ${st.error && html`<p class="warn small">${st.error}</p>`}
+      ${!st.busy && !st.list.length && html`<p class="empty">No cards found with that name. Check the spelling and search again.</p>`}
+      ${st.list.length > 0 && html`<p class="small muted">${st.list.length} version${st.list.length === 1 ? '' : 's'}, newest first. Tap the one that matches your card.</p>`}
+      <div class="grid version-grid">${st.list.map((c) => html`<button key=${c.id} class=${`version ${c.id === currentId ? 'current' : ''}`} onClick=${() => onPick(c)}>
+        <span class="version-img"><${CardImage} card=${c} /></span>
+        <span class="version-name">${c.name}</span>
+        <span class="small muted">${c.setCode} ${c.number}${c.setName ? ` · ${c.setName}` : ''}</span>
+        ${c.id === currentId && html`<span class="small version-tag">Current</span>`}
+      </button>`)}</div>
+    </div>
+  </div>`;
+}
+
+/* ---------- Compare two decks ---------- */
+function DeckCompare({ deck, decks, onOpen, onClose }) {
+  useEscape(onClose);
+  const others = decks.filter((d) => d.id !== deck.id);
+  // Default to the deck with the most cards in common (usually the other version).
+  const best = useMemo(() => {
+    const keys = new Set(deck.entries.map((e) => printKey(e.card)));
+    return [...others].sort((a, b) => b.entries.filter((e) => keys.has(printKey(e.card))).length - a.entries.filter((e) => keys.has(printKey(e.card))).length)[0];
+  }, []);
+  const [otherId, setOtherId] = useState(best?.id || '');
+  const [diffOnly, setDiffOnly] = useState(true);
+  const other = others.find((d) => d.id === otherId);
+  const rows = useMemo(() => {
+    if (!other) return [];
+    const map = {};
+    const addAll = (d, side) => d.entries.forEach((e) => { const k = printKey(e.card); (map[k] ||= { card: e.card, a: 0, b: 0 })[side] += e.count; });
+    addAll(deck, 'a'); addAll(other, 'b');
+    const order = { pokemon: 0, trainer: 1, energy: 2 };
+    return Object.values(map).sort((x, y) => order[sectionOf(x.card)] - order[sectionOf(y.card)] || x.card.name.localeCompare(y.card.name));
+  }, [deck, other]);
+  const changed = rows.filter((r) => r.a !== r.b);
+  const shown = diffOnly ? changed : rows;
+  const moved = changed.reduce((n, r) => n + Math.abs(r.a - r.b), 0);
+  return html`<div class="scrim" onClick=${onClose}>
+    <div class="modal tester" role="dialog" aria-modal="true" aria-label="Compare decks" onClick=${(e) => e.stopPropagation()}>
+      <div class="tester-head"><h2>Compare decks</h2><button class="btn ghost small" onClick=${onClose}>Close</button></div>
+      ${!others.length ? html`<p class="empty">You need at least two decks to compare. Use Copy deck to make another version.</p>` : html`
+      <div class="searchbar">
+        <span class="small"><b>${deck.name}</b> compared with</span>
+        <select value=${otherId} onChange=${(e) => setOtherId(e.target.value)} aria-label="Deck to compare with">${others.map((d) => html`<option value=${d.id}>${d.name}</option>`)}</select>
+        <label class="check"><input type="checkbox" checked=${diffOnly} onChange=${(e) => setDiffOnly(e.target.checked)} /> Only differences</label>
+      </div>
+      <p class="small">${changed.length ? html`<b>${changed.length}</b> card${changed.length === 1 ? '' : 's'} differ (${moved} card${moved === 1 ? '' : 's'} swapped in or out).` : 'These two decks are the same.'}</p>
+      ${shown.length > 0 && html`<div class="price-table"><table class="compare">
+        <thead><tr><th>Card</th><th>${deck.name}</th><th>${other?.name}</th><th>Change</th></tr></thead>
+        <tbody>${shown.map((r) => html`<tr class=${r.a > r.b ? 'more' : r.a < r.b ? 'less' : ''}>
+          <td><button class="linkbtn" onClick=${() => onOpen(r.card)}>${r.card.name}</button></td><td>${r.a || '–'}</td><td>${r.b || '–'}</td>
+          <td>${r.a === r.b ? 'same' : r.b > r.a ? `+${r.b - r.a} in ${other.name}` : `−${r.a - r.b} in ${other.name}`}</td></tr>`)}</tbody>
+      </table></div>`}`}
+    </div>
+  </div>`;
 }
 
 /* ---------- Opening-hand tester ---------- */
@@ -1335,6 +1591,7 @@ function DrawTester({ deck, onOpen, onClose }) {
 /* ---------- Scan cards into the Card Library ---------- */
 function ScanCards({ collection, onAdd, onOpen }) {
   const fileRef = useRef(null);
+  const [picking, setPicking] = useState(null); // index of the row being changed
   const [st, setSt] = useState({ busy: false, error: null, rows: null, msg: '' });
   async function handle(file) {
     if (!file) return;
@@ -1369,16 +1626,19 @@ function ScanCards({ collection, onAdd, onOpen }) {
         ${r.card ? html`<${CardTile} card=${r.card} onOpen=${onOpen} />` : html`<div class="ghosted">${r.name}</div>`}
         <div class="scan-body">
           <strong>${r.card ? r.card.name : r.name}</strong>
-          <span class="small muted">${r.card ? `${r.card.setCode} ${r.card.number}` : `Read as: ${r.raw}`}${r.card ? `, ${ownedCount(r.card, collection)} already in library` : ''}</span>
+          <span class="small muted">${r.card ? `${r.card.setCode} ${r.card.number}${r.card.setName ? ` · ${r.card.setName}` : ''}` : `Read as: ${r.raw}`}${r.card ? `, ${ownedCount(r.card, collection)} already in library` : ''}</span>
+          <button class="linkbtn small" onClick=${() => setPicking(i)}>${r.card ? 'Wrong version? Pick another' : 'Find this card'}</button>
           ${r.card ? html`<div class="row">
               <${Stepper} label="Copies" value=${r.count} onChange=${(n) => update(i, { count: n })} max=${60} />
               <label class="check small"><input type="checkbox" checked=${r.include} onChange=${(e) => update(i, { include: e.target.checked })} /> Add</label>
             </div>`
-            : html`<span class="small warn">Couldn’t match this card. Add it from Find cards instead.</span>`}
+            : html`<span class="small warn">Couldn’t match this card automatically.</span>`}
         </div>
       </div>`)}
       <button class="btn" disabled=${!chosen.length} onClick=${addAll}>Add ${chosen.reduce((n, r) => n + r.count, 0)} cards to library</button>
     </div>`}
+    ${picking != null && st.rows?.[picking] && html`<${VersionPicker} name=${st.rows[picking].card?.name || st.rows[picking].name} currentId=${st.rows[picking].card?.id}
+      onClose=${() => setPicking(null)} onPick=${(c) => { update(picking, { card: c, include: true }); setPicking(null); }} />`}
   </div>`;
 }
 
@@ -1457,7 +1717,59 @@ function SearchView({ onOpen, onAddDeck, onAddOwned, ownedOf, deckCountOf, onAdd
 }
 
 /* ---------- Card Library tab ---------- */
+// Sets available for checklists: from the saved card data, newest first.
+function checklistSets() {
+  if (!LOCAL) return [];
+  const sets = {};
+  for (const c of LOCAL.cards) { const id = c.id.slice(0, c.id.lastIndexOf('-')); (sets[id] ||= { id, code: c.setCode, name: c.setName, date: c.releaseDate, count: 0 }).count++; }
+  return Object.values(sets).sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.id.localeCompare(b.id));
+}
+function SetChecklist({ collection, store, onOpen }) {
+  const [setId, setSetId] = usePref('db.checklistSet', '');
+  const [missingOnly, setMissingOnly] = useState(false);
+  const [st, setSt] = useState({ busy: false, cards: [], error: null });
+  const [sets, setSets] = useState(checklistSets());
+  useEffect(() => { localReady.then(() => setSets(checklistSets())); }, []);
+  useEffect(() => {
+    if (!setId) return;
+    let live = true;
+    (async () => {
+      setSt({ busy: true, cards: [], error: null });
+      await localReady;
+      let cards = (LOCAL?.cards || []).filter((c) => c.id.startsWith(setId + '-'));
+      if (!cards.length) { try { cards = (await fetchCardsPaged({ id: `${setId}-` }, 600)).map(slimCard).filter((c) => c.id.startsWith(setId + '-')); } catch (e) { if (live) setSt({ busy: false, cards: [], error: e.message }); return; } }
+      cards.sort((a, b) => numKey(a.number).localeCompare(numKey(b.number)));
+      if (live) setSt({ busy: false, cards, error: null });
+    })();
+    return () => { live = false; };
+  }, [setId]);
+  const have = st.cards.filter((c) => (collection[c.id]?.count || 0) > 0).length;
+  const shown = missingOnly ? st.cards.filter((c) => !(collection[c.id]?.count > 0)) : st.cards;
+  const setOwn = (c, n) => store.setOwned(c, Math.max(0, n));
+  return html`<div class="checklist">
+    <div class="searchbar">
+      <select value=${setId} onChange=${(e) => setSetId(e.target.value)} aria-label="Choose a set">
+        <option value="">Choose a set…</option>
+        ${sets.map((x) => html`<option value=${x.id}>${x.code} · ${x.name}${x.date ? ` (${x.date.slice(0, 4)})` : ''}</option>`)}
+      </select>
+      <label class="check"><input type="checkbox" checked=${missingOnly} onChange=${(e) => setMissingOnly(e.target.checked)} /> Only cards I don’t have</label>
+    </div>
+    ${!sets.length && html`<p class="small muted">Set checklists use the saved card data (SETUP.md, step 5). Once that’s set up, every Standard set appears here.</p>`}
+    ${st.error && html`<p class="warn small">${st.error}</p>`}
+    ${st.busy && html`<p class="small muted">Loading the set…</p>`}
+    ${setId && !st.busy && st.cards.length > 0 && html`<div class="progress"><div class="progress-bar"><span style=${`width:${Math.round((have / st.cards.length) * 100)}%`}></span></div>
+      <span class="small">You have <b>${have}</b> of ${st.cards.length} cards in this set (${Math.round((have / st.cards.length) * 100)}%).</span></div>`}
+    <div class="grid wide">${shown.map((c) => { const n = collection[c.id]?.count || 0; return html`<div class=${`check-tile ${n ? '' : 'missing'}`} key=${c.id}>
+      <${CardTile} card=${c} count=${n || null} onOpen=${onOpen} />
+      <div class="tile-actions"><button class="mini ghost" disabled=${!n} onClick=${() => setOwn(c, n - 1)} aria-label=${`One fewer ${c.name}`}>−</button>
+        <span class="small check-num">${c.number}</span>
+        <button class="mini" onClick=${() => setOwn(c, n + 1)} aria-label=${`One more ${c.name}`}>+</button></div>
+    </div>`; })}</div>
+  </div>`;
+}
+
 function CollectionView({ collection, store, onOpen }) {
+  const [view, setView] = usePref('db.libraryView', 'cards');
   const [f, setF] = usePref('db.libraryFilters', { ...blankFilters('any'), sort: 'name' });
   const filters = { ...blankFilters('any'), ...f };
   const fileRef = useRef(null);
@@ -1491,6 +1803,11 @@ function CollectionView({ collection, store, onOpen }) {
     r.readAsText(file);
   }
   return html`<section class="collection">
+    <div class="seg" role="tablist" aria-label="Library view">
+      <button role="tab" aria-selected=${view === 'cards'} class=${view === 'cards' ? 'on' : ''} onClick=${() => setView('cards')}>My cards</button>
+      <button role="tab" aria-selected=${view === 'checklist'} class=${view === 'checklist' ? 'on' : ''} onClick=${() => setView('checklist')}>Set checklists</button>
+    </div>
+    ${view === 'checklist' ? html`<${SetChecklist} collection=${collection} store=${store} onOpen=${onOpen} />` : html`
     <div class="statbar">
       <div class="count60"><b>${total}</b><span>cards in your library</span></div>
       <div class="row end">
@@ -1507,6 +1824,7 @@ function CollectionView({ collection, store, onOpen }) {
     ${!items.length
       ? html`<p class="empty">${total ? 'No cards in your library match those filters.' : 'Nothing here yet. Paste a list above or add cards from Find cards.'}</p>`
       : html`<div class="grid wide">${items.map((e) => html`<${CardTile} key=${e.card.id} card=${e.card} count=${e.count} onOpen=${onOpen} />`)}</div>`}
+    `}
   </section>`;
 }
 
@@ -1586,7 +1904,7 @@ function addNote(notes, note) {
   const line = `- ${note.replace(/^[-•]\s*/, '').trim()}`;
   return [notes.trim(), line].filter(Boolean).join('\n').slice(-NOTES_LIMIT);
 }
-function AssistantPanel({ deck, collection, format, store, notes, otherDecks, onAdd, onRemove, onOpen, onOwned }) {
+function AssistantPanel({ deck, collection, format, store, notes, otherDecks, onAdd, onRemove, onOpen, onOwned, wants = {} }) {
   const [web, setWeb] = usePref('db.webSearch', true);
   const [messages, setMessagesRaw] = useState([]), [input, setInput] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const [copied, setCopied] = useState(false), [chatLoaded, setChatLoaded] = useState(false);
@@ -1676,7 +1994,8 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
             <span class="small">${s.reason}</span>
             ${s.card && s.action !== 'remove' && html`<span class="small muted">${ownedCount(s.card, collection)
               ? `${ownedCount(s.card, collection)} in your library` : 'Not in your Card Library yet'}${deckCountOf(deck, s.card) ? `, ${deckCountOf(deck, s.card)} in this deck` : ''}
-              ${ownedCount(s.card, collection) < Math.max(1, s.count) && html` <button class="linkbtn" onClick=${() => onOwned(s.card, Math.max(1, s.count))}>We have it</button>`}</span>`}
+              ${ownedCount(s.card, collection) < Math.max(1, s.count) && html` <button class="linkbtn" onClick=${() => onOwned(s.card, Math.max(1, s.count))}>We have it</button>
+                ${wants[s.card.id] ? html` <span class="sugg-status ok">On want list</span>` : html` <button class="linkbtn" onClick=${() => store.setWant(s.card, Math.max(1, s.count))}>Want it</button>`}`}</span>`}
             ${!s.card ? html`<span class="small warn">Couldn’t find this card. Try Find cards.</span>`
               : s.done ? html`<span class="sugg-status ok">${s.action === 'remove' ? 'Removed' : 'Added'}</span>`
               : s.dismissed ? html`<span class="sugg-status">Passed <button class="linkbtn" onClick=${() => updateSugg(mi, si, { dismissed: false })}>Undo</button></span>`
@@ -1848,6 +2167,7 @@ function App() {
   if (!data.loaded || !decks.length) return html`<div class="loading">Opening your decks…</div>`;
 
   const collection = data.collection;
+  const wantCount = Object.values(data.wants || {}).reduce((n, w) => n + w.count, 0);
   EXTRA_CARDS = [...BUILT_IN_EXTRAS, ...Object.values(data.customCards || {})];
   const deck = decks.find((d) => d.id === activeId) || decks[0];
   const stats = analyzeDeck(deck.entries, collection, format);
@@ -1871,6 +2191,22 @@ function App() {
   };
   const ownedExact = (card) => collection[card.id]?.count || 0;
 
+  // Move this deck's copies and the library's copies of one printing over to another.
+  async function switchVersion(from, to) {
+    const inDeck = deckCountOf(from), inLib = ownedExact(from);
+    if (!inDeck && !inLib) { setModalCard(to); return; }
+    const parts = [inDeck && `${inDeck} in this deck`, inLib && `${inLib} in your Card Library`].filter(Boolean).join(' and ');
+    if (!confirm(`Switch to ${to.name} (${to.setCode} ${to.number})? This moves ${parts} to that version.`)) { setModalCard(to); return; }
+    if (inDeck) {
+      const rest = deck.entries.filter((e) => e.card.id !== from.id);
+      const entries = rest.some((e) => e.card.id === to.id)
+        ? rest.map((e) => (e.card.id === to.id ? { ...e, count: e.count + inDeck } : e))
+        : [...rest, { card: to, count: inDeck }];
+      await writeDeck({ ...deck, entries });
+    }
+    if (inLib) await store.setOwnedMany([{ card: from, count: 0 }, { card: to, count: ownedExact(to) + inLib }]);
+    setModalCard(to);
+  }
   function newDeck() { const d = blankDeck(`Deck ${decks.length + 1}`); store.saveDeck(d); setActiveId(d.id); setTab('deck'); }
   function copyDeck() {
     const name = prompt('Name for the copy:', nextVersionName(deck.name, decks));
@@ -1911,7 +2247,7 @@ function App() {
     ${upgrade && html`<p class="muted small">${upgrade}</p>`}
 
     <nav class="tabs" role="tablist">
-      ${[['deck', 'Deck'], ['search', 'Find cards'], ['collection', 'Card Library']].map(([k, label]) =>
+      ${[['deck', 'Deck'], ['search', 'Find cards'], ['collection', 'Card Library'], ['wants', `Want list${wantCount ? ` (${wantCount})` : ''}`]].map(([k, label]) =>
         html`<button role="tab" aria-selected=${tab === k} class=${tab === k ? 'on' : ''} onClick=${() => setTab(k)}>${label}</button>`)}
     </nav>
 
@@ -1920,17 +2256,20 @@ function App() {
         ${tab === 'deck' && html`<${DeckView} key=${deck.id} deck=${deck} decks=${decks} collection=${collection} stats=${stats} onOpen=${setModalCard} onImport=${importToDeck} />`}
         ${tab === 'search' && html`<${SearchView} onOpen=${setModalCard} onAddDeck=${(c) => addToDeck(c)} onAddOwned=${(c) => store.setOwned(c, ownedExact(c) + 1)} ownedOf=${ownedExact} deckCountOf=${deckCountOf} onAddExtra=${(name) => setExtraForm({ name })} />`}
         ${tab === 'collection' && html`<${CollectionView} collection=${collection} store=${store} onOpen=${setModalCard} />`}
+        ${tab === 'wants' && html`<${WantListView} decks=${decks} collection=${collection} wants=${data.wants || {}} store=${store} onOpen=${setModalCard} />`}
       </main>
       <${AssistantPanel} key=${deck.id} deck=${deck} collection=${collection} format=${format}
         notes=${data.coachNotes || ''} otherDecks=${describeDecks(decks, deck.id)}
-        onOwned=${(card, count) => store.setOwned(card, Math.max(ownedExact(card), count))}
+        onOwned=${(card, count) => store.setOwned(card, Math.max(ownedExact(card), count))} wants=${data.wants || {}}
         store=${store} onAdd=${addToDeck} onRemove=${removeFromDeck} onOpen=${setModalCard} />
     </div>
 
     <p class="foot">Version ${VERSION}. ${store.mode === 'firebase' ? 'Shared with Firebase.' : 'Saved on this device only.'}</p>
 
     ${modalCard && html`<${CardModal} card=${modalCard} deckCount=${deckCountOf(modalCard)} ownedExact=${ownedExact(modalCard)}
+      wantCount=${data.wants?.[modalCard.id]?.count || 0} onWant=${(n) => store.setWant(modalCard, n)}
       onDeck=${(n) => setDeckCount(modalCard, n)} onOwned=${(n) => store.setOwned(modalCard, n)} onClose=${() => setModalCard(null)}
+      onSwitchVersion=${switchVersion}
       onDeleteExtra=${(c) => { if (confirm(`Remove “${c.name}” from the extra cards? Decks that use it keep their copy.`)) { store.deleteCustomCard(c.id); setModalCard(null); } }} />`}
     ${extraForm && html`<${ExtraCardForm} initialName=${extraForm.name} onClose=${() => setExtraForm(null)}
       onSave=${(c) => { store.saveCustomCard(c); setExtraForm(null); setModalCard(c); }} />`}
