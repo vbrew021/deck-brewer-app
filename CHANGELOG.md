@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.1 (October 10, 2026)
+- Fixed: "The coach's answer came back garbled." The coach now uses light
+  thinking and a much larger answer limit, so long answers don't get cut off.
+- If an answer is still cut off, the coach shows what it wrote and suggests
+  asking "keep going"; if it can't read the answer at all, it retries once
+  asking for a shorter reply.
+
 ## 1.3.0 (October 10, 2026)
 - Fixed: coach messages no longer overlap or jump around while scrolling.
 - Fixed: the stray "Opening your decks…" text below the page is gone.

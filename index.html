@@ -184,7 +184,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -515,13 +515,16 @@ How you help:
 - Explain the "why" simply enough for a kid to follow: what the deck is trying to do, how the pieces fit together, and how a change affects consistency.
 - Never invent cards. If you aren't sure a card exists or what its set code is, leave setCode and number empty and say you're unsure. Newer cards may be beyond what you know; if a card in their deck or collection is unfamiliar, reason from its name and ask about its text rather than guessing.
 
-Answer as JSON matching the schema. Keep "reply" conversational and fairly short: short paragraphs, and "- " lines for lists. Put every concrete card change in "suggestions" using Pokémon TCG Live set codes (e.g. TWM, SFA, PAF) and collector numbers. Use an empty list when there's nothing to change.`;
+Answer as JSON matching the schema. Keep "reply" conversational and short (usually under 200 words): short paragraphs, and "- " lines for lists. Put every concrete card change in "suggestions" using Pokémon TCG Live set codes (e.g. TWM, SFA, PAF) and collector numbers. Use an empty list when there's nothing to change.`;
 
-let modelPromise = null;
-function getCoachModel() {
-  modelPromise ||= (async () => {
+// Two versions of the coach model: one with light "thinking" (faster, leaves room for the answer),
+// and a plain one in case the configured model doesn't accept thinking settings.
+const modelPromises = {};
+function getCoachModel(light = true) {
+  const key = light ? 'light' : 'plain';
+  modelPromises[key] ||= (async () => {
     const app = await getFirebaseApp();
-    const { getAI, getGenerativeModel, GoogleAIBackend, Schema } = await import(FB + 'firebase-ai.js');
+    const { getAI, getGenerativeModel, GoogleAIBackend, Schema, ThinkingLevel } = await import(FB + 'firebase-ai.js');
     const schema = Schema.object({ properties: {
       reply: Schema.string(),
       suggestions: Schema.array({ items: Schema.object({
@@ -532,15 +535,14 @@ function getCoachModel() {
         optionalProperties: ['setCode', 'number'],
       }) }),
     } });
-    return getGenerativeModel(getAI(app, { backend: new GoogleAIBackend() }), {
-      model: GEMINI_MODEL,
-      systemInstruction: SYSTEM,
-      generationConfig: { responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 4000 },
-    });
+    const generationConfig = { responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 16384 };
+    if (light && ThinkingLevel) generationConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
+    return getGenerativeModel(getAI(app, { backend: new GoogleAIBackend() }), { model: GEMINI_MODEL, systemInstruction: SYSTEM, generationConfig });
   })();
-  modelPromise.catch(() => { modelPromise = null; });
-  return modelPromise;
+  modelPromises[key].catch(() => { delete modelPromises[key]; });
+  return modelPromises[key];
 }
+let useLightThinking = true;
 
 const deckContext = (deck, collection, format) =>
   `Format: ${formatName(format)}\n\nCurrent deck ("${deck.name}"):\n${deck.entries.length ? exportDecklist(deck.entries) : '(empty)'}\n\nCards we own:\n${collectionText(collection) || '(nothing recorded yet)'}`;
@@ -555,19 +557,51 @@ function friendlyCoachError(e) {
   return 'The coach couldn’t answer. Try again, or use Copy for Claude.';
 }
 
+// Pull the coach's JSON answer out of the response, even if it has stray text around it.
+function parseCoachJson(text) {
+  let t = String(text || '').replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '').trim();
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a >= 0 && b > a) t = t.slice(a, b + 1);
+  const d = JSON.parse(t);
+  return { reply: String(d.reply || ''), suggestions: Array.isArray(d.suggestions) ? d.suggestions.filter((x) => x && x.name) : [] };
+}
+// If the answer was cut off partway, rescue the written reply so it isn't lost.
+function salvageReply(text) {
+  const m = String(text || '').match(/"reply"\s*:\s*"((?:\\.|[^"\\])*)/);
+  if (!m || m[1].length < 20) return null;
+  try { return JSON.parse(`"${m[1].replace(/\\$/, '')}"`); } catch { return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'); }
+}
+
+async function callCoach(contents) {
+  try {
+    return await (await getCoachModel(useLightThinking)).generateContent({ contents });
+  } catch (e) {
+    // Some models don't accept thinking settings; switch to the plain version and try again.
+    if (useLightThinking && /thinking/i.test(`${e?.message || ''}`)) { useLightThinking = false; return (await getCoachModel(false)).generateContent({ contents }); }
+    throw e;
+  }
+}
+
 async function askCoach({ history, message, deck, collection, format }) {
-  let result;
-  try {
-    const model = await getCoachModel();
-    result = await model.generateContent({ contents: [
-      ...history.slice(-12).map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-      { role: 'user', parts: [{ text: `${deckContext(deck, collection, format)}\n\n${message}` }] },
-    ] });
-  } catch (e) { console.error(e); throw new Error(friendlyCoachError(e)); }
-  try {
-    const d = JSON.parse(result.response.text().replace(/^```(json)?|```$/g, '').trim());
-    return { reply: d.reply || '', suggestions: Array.isArray(d.suggestions) ? d.suggestions : [] };
-  } catch { throw new Error('The coach’s answer came back garbled. Try asking again.'); }
+  const base = [
+    ...history.slice(-12).map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+    { role: 'user', parts: [{ text: `${deckContext(deck, collection, format)}\n\n${message}` }] },
+  ];
+  let lastText = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const contents = attempt === 0 ? base : [...base.slice(0, -1), { role: 'user', parts: [{ text: base[base.length - 1].parts[0].text + '\n\n(Please keep this answer short: under 150 words, and at most 6 suggestions.)' }] }];
+    let result;
+    try { result = await callCoach(contents); }
+    catch (e) { console.error(e); throw new Error(friendlyCoachError(e)); }
+    try { lastText = result.response.text(); } catch (e) { console.error('Coach response had no text', e, result?.response); lastText = ''; }
+    try { return parseCoachJson(lastText); }
+    catch {
+      console.warn('Coach answer could not be read', result?.response?.candidates?.[0]?.finishReason, lastText);
+      const rescued = salvageReply(lastText);
+      if (rescued) return { reply: rescued.trim() + '\n\n*(This answer got cut off. Ask “keep going” to hear the rest.)*', suggestions: [] };
+    }
+  }
+  throw new Error('The coach’s answer came back garbled twice. Try a shorter question, or start a New chat (long chats give the coach more to read).');
 }
 
 /* ---------- Copy for Claude (free, no setup) ---------- */
