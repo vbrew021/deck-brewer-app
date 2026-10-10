@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Deck Brewer</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
+<meta name="color-scheme" content="light dark" />
+<script>
+  // Apply the saved theme before the page draws, so dark mode doesn't flash white.
+  try { var t = JSON.parse(localStorage.getItem('db.theme') || '"system"'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Lexend:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -24,13 +29,80 @@
   --short: #D9771E;
   --need: #C23B33;
   --focus: #F2C230;
+  color-scheme: light;
+  --btn: #24315C;
+  --btn-hover: #1A2548;
+  --field: #F7F9FC;
+  --soft: #F4F6FA;
+  --soft-hover: #E5EBF4;
+  --tile-bg: #D9E0EC;
+  --warn-bg: #FFF3E6;
+  --warn-ink: #7A3E06;
+  --note-bg: #FFF6DB;
+  --scrim: rgba(16, 22, 44, .6);
   --r-sm: 6px; --r-md: 10px; --r-lg: 16px;
   --display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
   --body: 'Lexend', 'Segoe UI', system-ui, sans-serif;
 }
+/* Dark mode: follows the device unless a theme is chosen in Settings */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --page: #0E1322;
+  --paper: #172036;
+  --ink: #E6EBF5;
+  --muted: #9AA6C2;
+  --binder: #22305A;
+  --pocket: #2C3B6B;
+  --line: #2C3954;
+  --pokemon: #A98BEA;
+  --trainer: #6EA6F2;
+  --energy: #E8B33A;
+  --have: #3DBE7A;
+  --short: #F0A04B;
+  --need: #F07068;
+  --btn: #3F5BB8;
+  --btn-hover: #4D6AC9;
+  --field: #10182B;
+  --soft: #1E2942;
+  --soft-hover: #26334F;
+  --tile-bg: #26334F;
+  --warn-bg: #3A2A14;
+  --warn-ink: #F5C58A;
+  --note-bg: #3A3216;
+  --scrim: rgba(3, 6, 14, .72);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0E1322;
+  --paper: #172036;
+  --ink: #E6EBF5;
+  --muted: #9AA6C2;
+  --binder: #22305A;
+  --pocket: #2C3B6B;
+  --line: #2C3954;
+  --pokemon: #A98BEA;
+  --trainer: #6EA6F2;
+  --energy: #E8B33A;
+  --have: #3DBE7A;
+  --short: #F0A04B;
+  --need: #F07068;
+  --btn: #3F5BB8;
+  --btn-hover: #4D6AC9;
+  --field: #10182B;
+  --soft: #1E2942;
+  --soft-hover: #26334F;
+  --tile-bg: #26334F;
+  --warn-bg: #3A2A14;
+  --warn-ink: #F5C58A;
+  --note-bg: #3A3216;
+  --scrim: rgba(3, 6, 14, .72);
+}
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 var(--body); }
 button, input, select, textarea { font: inherit; color: inherit; }
+.theme-toggle { font-size: 16px; line-height: 1; padding: 6px 10px; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; letter-spacing: -0.01em; }
 .muted { color: var(--muted); } .small { font-size: 13px; } .warn { color: var(--need); }
@@ -38,14 +110,14 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; letter-sp
 .loading { display: grid; place-items: center; min-height: 100vh; color: var(--muted); }
 
 /* Buttons */
-.btn { background: var(--binder); color: #fff; border: 0; border-radius: var(--r-sm); padding: 8px 14px; font-weight: 600; cursor: pointer; }
-.btn:hover:not(:disabled) { background: #1A2548; }
+.btn { background: var(--btn); color: #fff; border: 0; border-radius: var(--r-sm); padding: 8px 14px; font-weight: 600; cursor: pointer; }
+.btn:hover:not(:disabled) { background: var(--btn-hover); }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
 .btn.ghost:hover:not(:disabled) { background: var(--paper); }
 .btn.small { padding: 5px 10px; font-size: 13px; }
 .btn.danger { color: var(--need); }
-.mini { border: 0; background: var(--binder); color: #fff; border-radius: var(--r-sm); padding: 4px 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.mini { border: 0; background: var(--btn); color: #fff; border-radius: var(--r-sm); padding: 4px 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
 .mini.ghost { background: var(--paper); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
 .mini:disabled { background: var(--have); opacity: 1; cursor: default; }
 
@@ -78,7 +150,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; letter-sp
 .split .sec-energy { color: var(--energy); }
 .missing { font-weight: 600; color: var(--short); }
 .missing.none { color: var(--have); }
-.issues { margin: 0 0 12px; padding: 10px 14px 10px 30px; background: #FFF3E6; border-radius: var(--r-md); color: #7A3E06; font-size: 14px; }
+.issues { margin: 0 0 12px; padding: 10px 14px 10px 30px; background: var(--warn-bg); border-radius: var(--r-md); color: var(--warn-ink); font-size: 14px; }
 
 /* Binder sheets: the deck's signature look */
 .binder { background: var(--binder); border-radius: var(--r-lg); padding: 14px 16px 18px; margin-bottom: 16px; border-left: 8px solid var(--accent); }
@@ -92,12 +164,12 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; letter-sp
 
 .tile { display: flex; flex-direction: column; gap: 6px; }
 .pocket { position: relative; display: block; padding: 4px; border: 0; border-radius: var(--r-md); background: var(--pocket); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); cursor: pointer; aspect-ratio: 63 / 88; }
-.search .pocket, .collection .pocket, .assistant .pocket { background: #D9E0EC; }
+.search .pocket, .collection .pocket, .assistant .pocket { background: var(--tile-bg); }
 .pocket img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: 7px; }
 .pocket:hover img { transform: translateY(-2px); transition: transform .15s; }
 @media (prefers-reduced-motion: reduce) { .pocket:hover img { transform: none; } }
 .noimg { display: grid; place-items: center; height: 100%; color: #fff; font-size: 12px; padding: 6px; }
-.qty { position: absolute; top: -6px; left: -6px; min-width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: #fff; color: var(--ink); font-family: var(--display); font-weight: 800; font-size: 16px; box-shadow: 0 2px 0 rgba(0,0,0,.25); }
+.qty { position: absolute; top: -6px; left: -6px; min-width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: #fff; color: #1A2340; font-family: var(--display); font-weight: 800; font-size: 16px; box-shadow: 0 2px 0 rgba(0,0,0,.25); }
 .own { position: absolute; left: 6px; right: 6px; bottom: 6px; text-align: center; font-size: 11px; font-weight: 600; color: #fff; border-radius: 4px; padding: 1px 4px; }
 .own-have { background: var(--have); } .own-short { background: var(--short); } .own-need { background: var(--need); }
 .tile-actions { display: flex; gap: 6px; justify-content: center; }
@@ -107,7 +179,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; letter-sp
 .import { background: var(--paper); border-radius: var(--r-md); padding: 14px 16px; margin-bottom: 14px; }
 .import h3 { font-size: 17px; }
 .import p { margin: 4px 0 10px; }
-textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 10px; resize: vertical; background: #F7F9FC; font-size: 14px; }
+textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 10px; resize: vertical; background: var(--field); font-size: 14px; }
 .import textarea { margin-bottom: 10px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 .searchbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
 .searchbar input { flex: 1; min-width: 200px; }
@@ -121,12 +193,12 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .assistant h2 { font-size: 20px; }
 .thread { flex: 1; overflow-y: auto; padding: 4px 16px 12px; min-height: 240px; }
 .starters { display: flex; flex-direction: column; gap: 8px; }
-.starter { text-align: left; background: #F2F5FA; border: 0; border-radius: var(--r-md); padding: 10px 12px; cursor: pointer; font-size: 14px; }
-.starter:hover { background: #E5EBF4; }
+.starter { text-align: left; background: var(--soft); border: 0; border-radius: var(--r-md); padding: 10px 12px; cursor: pointer; font-size: 14px; }
+.starter:hover { background: var(--soft-hover); }
 .msg { margin: 12px 0; }
 .msg p { margin: 0 0 8px; white-space: pre-wrap; }
 .msg p:last-child { margin-bottom: 0; }
-.msg-user p { background: var(--binder); color: #fff; padding: 9px 12px; border-radius: var(--r-md) var(--r-md) 2px var(--r-md); margin-left: 28px; }
+.msg-user p { background: var(--btn); color: #fff; padding: 9px 12px; border-radius: var(--r-md) var(--r-md) 2px var(--r-md); margin-left: 28px; }
 .msg-coach { font-size: 14.5px; }
 .msg-coach ul { margin: 0 0 8px; padding-left: 20px; }
 .msg-coach li { margin: 2px 0; }
@@ -136,7 +208,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .sugg.show { border-left-color: var(--trainer); }
 .sugg-status { font-size: 12px; font-weight: 600; color: var(--muted); }
 .sugg-status.ok { color: var(--have); }
-.remember { margin-top: 10px; padding: 10px 12px; border-radius: var(--r-md); background: #FFF6DB; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.remember { margin-top: 10px; padding: 10px 12px; border-radius: var(--r-md); background: var(--note-bg); display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
 .divider { border: 0; border-top: 1px solid var(--line); margin: 18px 0 8px; }
 .settings textarea { font-size: 14px; }
 .sugg-group { margin: 6px 0 -2px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
@@ -152,11 +224,11 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .fld.wide { grid-column: 1 / -1; }
 .fld.end { justify-content: flex-end; }
 .fld label { font-size: 12px; font-weight: 600; color: var(--muted); }
-.fld input, .fld select { background: #F7F9FC; border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 7px 9px; width: 100%; }
+.fld input, .fld select { background: var(--field); border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 7px 9px; width: 100%; }
 .range { display: flex; align-items: center; gap: 6px; } .range span { font-size: 12px; color: var(--muted); }
 .btn.has-filters { box-shadow: inset 0 0 0 2px var(--trainer); color: var(--trainer); }
 .result-count { margin: 6px 2px 0; }
-.prices { margin: 14px 0 4px; padding: 10px 12px; background: #F4F6FA; border-radius: var(--r-md); }
+.prices { margin: 14px 0 4px; padding: 10px 12px; background: var(--soft); border-radius: var(--r-md); }
 .prices-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .tcgp { color: var(--trainer); font-weight: 600; font-size: 14px; }
 .price-table { overflow-x: auto; }
@@ -168,10 +240,10 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .chat-note { text-align: center; font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
 .thinking { color: var(--muted); font-style: italic; }
 .suggest { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
-.sugg { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: start; padding: 8px; border-radius: var(--r-md); background: #F4F6FA; border-left: 4px solid var(--have); }
+.sugg { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: start; padding: 8px; border-radius: var(--r-md); background: var(--soft); border-left: 4px solid var(--have); }
 .sugg.remove { border-left-color: var(--need); }
 .sugg-body { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
-.ghosted { aspect-ratio: 63/88; background: #DDE3EE; border-radius: var(--r-sm); display: grid; place-items: center; font-size: 11px; text-align: center; padding: 4px; }
+.ghosted { aspect-ratio: 63/88; background: var(--tile-bg); border-radius: var(--r-sm); display: grid; place-items: center; font-size: 11px; text-align: center; padding: 4px; }
 .composer { display: flex; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--line); align-items: flex-end; }
 .composer textarea { flex: 1; }
 .composer-actions { display: flex; flex-direction: column; gap: 6px; }
@@ -179,7 +251,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .claude-hint a { color: var(--trainer); font-weight: 600; }
 
 /* Modal */
-.scrim { position: fixed; inset: 0; background: rgba(16, 22, 44, .6); display: grid; place-items: center; padding: 16px; z-index: 10; }
+.scrim { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; padding: 16px; z-index: 10; }
 .modal { background: var(--paper); border-radius: var(--r-lg); display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 20px; padding: 20px; max-width: 760px; width: 100%; max-height: 92vh; overflow: auto; }
 @media (max-width: 640px) { .modal { grid-template-columns: 1fr; } .modal-img { max-width: 260px; margin: 0 auto; } }
 .modal-img { width: 100%; border-radius: 12px; }
@@ -191,7 +263,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .modal-controls { display: flex; flex-direction: column; gap: 10px; margin: 16px 0; }
 .stepper { display: flex; align-items: center; gap: 8px; }
 .stepper-label { flex: 1; font-weight: 600; font-size: 14px; }
-.stepper button { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--binder); color: #fff; font-size: 18px; cursor: pointer; }
+.stepper button { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--btn); color: #fff; font-size: 18px; cursor: pointer; }
 .stepper-val { min-width: 28px; text-align: center; font-family: var(--display); font-weight: 800; font-size: 20px; }
 
 /* Added for the GitHub Pages version */
@@ -201,7 +273,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .connect { max-width: 440px; margin: 12vh auto; background: var(--paper); border-radius: var(--r-lg); padding: 28px; border-top: 6px solid var(--binder); }
 .connect h1 { font-size: 30px; margin-bottom: 6px; }
 .connect label, .settings label { display: block; font-weight: 600; font-size: 14px; margin: 14px 0 4px; }
-.connect input, .settings input, .settings select { width: 100%; background: #F7F9FC; border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 9px 10px; }
+.connect input, .settings input, .settings select { width: 100%; background: var(--field); border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 9px 10px; }
 .pw { display: flex; gap: 6px; } .pw input { flex: 1; }
 .settings { max-width: 520px; display: block; }
 .settings p { margin: 4px 0; }
@@ -216,7 +288,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -234,6 +306,13 @@ function usePref(key, init) {
   useEffect(() => save(key, v), [key, v]);
   return [v, setV];
 }
+// Theme: 'system' follows the device; 'light' or 'dark' overrides it.
+function applyTheme(theme) {
+  const el = document.documentElement;
+  if (theme === 'light' || theme === 'dark') el.dataset.theme = theme; else delete el.dataset.theme;
+}
+applyTheme(load('db.theme', 'system'));
+const systemDark = () => window.matchMedia?.('(prefers-color-scheme: dark)').matches;
 const makeId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 /* ---------- Card database (TCGdex: free, open source, no key) ---------- */
@@ -1348,7 +1427,7 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
 }
 
 /* ---------- Settings and family code ---------- */
-function Settings({ mode, notes, onSaveNotes, onClose, onDisconnect }) {
+function Settings({ mode, notes, onSaveNotes, onClose, onDisconnect, theme, onTheme }) {
   const [draft, setDraft] = useState(notes || '');
   const [saved, setSaved] = useState(false);
   useEscape(onClose);
@@ -1364,6 +1443,12 @@ function Settings({ mode, notes, onSaveNotes, onClose, onDisconnect }) {
         <button class="btn" disabled=${draft === (notes || '')} onClick=${saveNotes}>${saved ? 'Saved' : 'Save notes'}</button>
         <span class="small muted">${draft.length} / ${NOTES_LIMIT}</span>
       </div>
+      <hr class="divider" />
+      <label for="th">Theme</label>
+      <select id="th" value=${theme} onChange=${(e) => onTheme(e.target.value)}>
+        <option value="system">Match this device</option><option value="light">Light</option><option value="dark">Dark</option>
+      </select>
+      <p class="muted small">Saved on this device only.</p>
       <hr class="divider" />
       <p class="small">${mode === 'firebase' ? html`<b>Shared with Firebase.</b> Decks, cards, chats and coach notes sync across your devices.` : 'Saved on this device only. Fill in firebase-config.js to share across devices.'}</p>
       <p class="small">${COACH_READY ? html`<b>Deck coach is on</b> (Google Gemini, free tier: ${currentCoachModel()}).` : 'Deck coach is off until AI Logic and App Check are set up (SETUP.md, step 2). Copy for Claude still works.'}</p>
@@ -1413,6 +1498,9 @@ function App() {
   const [modalCard, setModalCard] = useState(null);
   const [settings, setSettings] = useState(false);
   const [nameDraft, setNameDraft] = useState(null);
+  const [theme, setTheme] = usePref('db.theme', 'system');
+  useEffect(() => applyTheme(theme), [theme]);
+  const isDark = theme === 'dark' || (theme === 'system' && systemDark());
   const [extraForm, setExtraForm] = useState(null);
 
   // Connect to Firebase (or fall back to this device only).
@@ -1529,7 +1617,9 @@ function App() {
       <select class="format" value=${format} onChange=${(e) => setFormat(e.target.value)} aria-label="Format">
         <option value="standard">Standard</option><option value="expanded">Expanded</option><option value="casual">Casual (any cards)</option>
       </select>
-      <button class="btn ghost small gear" onClick=${() => setSettings(true)}>Settings</button>
+      <button class="btn ghost small gear theme-toggle" onClick=${() => setTheme(isDark ? 'light' : 'dark')}
+        aria-label=${isDark ? 'Switch to light mode' : 'Switch to dark mode'} title=${isDark ? 'Light mode' : 'Dark mode'}>${isDark ? '☀️' : '🌙'}</button>
+      <button class="btn ghost small" onClick=${() => setSettings(true)}>Settings</button>
     </header>
     ${syncErr && html`<p class="warn small">${syncErr}</p>`}
     ${upgrade && html`<p class="muted small">${upgrade}</p>`}
@@ -1558,7 +1648,7 @@ function App() {
       onDeleteExtra=${(c) => { if (confirm(`Remove “${c.name}” from the extra cards? Decks that use it keep their copy.`)) { store.deleteCustomCard(c.id); setModalCard(null); } }} />`}
     ${extraForm && html`<${ExtraCardForm} initialName=${extraForm.name} onClose=${() => setExtraForm(null)}
       onSave=${(c) => { store.saveCustomCard(c); setExtraForm(null); setModalCard(c); }} />`}
-    ${settings && html`<${Settings} mode=${store.mode} notes=${data.coachNotes || ''} onSaveNotes=${(t) => store.saveCoachNotes(t)} onClose=${() => setSettings(false)}
+    ${settings && html`<${Settings} mode=${store.mode} theme=${theme} onTheme=${setTheme} notes=${data.coachNotes || ''} onSaveNotes=${(t) => store.saveCoachNotes(t)} onClose=${() => setSettings(false)}
       onDisconnect=${() => { setSettings(false); setStore(null); setData({ decks: {}, collection: {}, loaded: false }); setCode(''); }} />`}
   </div>`;
 }

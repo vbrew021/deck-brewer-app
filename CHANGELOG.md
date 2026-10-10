@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0 (October 10, 2026)
+- Added: dark mode. It follows your device's setting by default; the moon/sun
+  button in the header switches between light and dark, and Settings has a
+  Theme option (Match this device, Light, Dark), saved per device.
+- No Firebase changes needed.
+
 ## 1.6.0 (October 10, 2026)
 - Changed: "Our cards" is now "Card Library".
 - Added: advanced search in Find cards and Card Library, modeled on

@@ -102,6 +102,12 @@ an AI coach to find substitutes and understand the deck.
    with section colors (Pokémon purple, Trainers blue, Energy gold), Bricolage
    Grotesque headings and Lexend body text, visible focus outlines, works on
    phones.
+   Light and dark themes: every color is a CSS variable on `:root`, with dark
+   values under `@media (prefers-color-scheme: dark)` (guarded by
+   `:root:not([data-theme="light"])`) and repeated under
+   `:root[data-theme="dark"]`. Never hard-code a light color; add a variable to
+   both themes instead. The theme choice (`db.theme`: system, light, dark) is
+   per device and applied by a small script in `<head>` to avoid a white flash.
 13. **Update everywhere.** Each release updates `index.html`, `CHANGELOG.md`,
     and `SETUP.md` when instructions change. Remind the user to upload to
     GitHub and check the version label.
