@@ -1,12 +1,11 @@
 # Deck Binder setup
 
 Deck Binder runs on GitHub Pages and keeps your decks and cards in Firebase,
-so everyone in the family sees the same binder on every device. It works the
-same way as the Halfway Point app.
+so everyone in the family sees the same binder on every device.
 
 ## 1. Create a Firebase project (free, about 5 minutes)
 
-A separate project keeps Deck Binder's rules apart from the trip app's.
+A new project keeps Deck Binder's rules separate from anything else you run.
 
 1. Go to https://console.firebase.google.com and click **Create a project**.
    Name it something like "deck-binder". Google Analytics isn't needed.
@@ -23,13 +22,13 @@ A separate project keeps Deck Binder's rules apart from the trip app's.
 
 The project stays on the free Spark plan. No card is needed.
 
-**Using the trip app's project instead?** Don't replace its rules. Open its
-Rules tab and paste the `familyCode()` line and the
-`match /deckbinder/{code}/{document=**}` block from `firestore.rules` inside
-the existing `match /databases/{database}/documents { ... }` section, next to
-the trip app's rules. If both apps use a function named `familyCode()`, rename
-this one (for example `deckCode()`) in both places. Use that project's config
-in `firebase-config.js`.
+**Using a Firebase project you already have?** Don't replace its rules, or
+your other app will lose access. Open its Rules tab and paste the
+`familyCode()` line and the `match /deckbinder/{code}/{document=**}` block
+from `firestore.rules` inside the existing
+`match /databases/{database}/documents { ... }` section. If a function named
+`familyCode()` is already there, rename this one (for example `deckCode()`)
+in both places. Use that project's config in `firebase-config.js`.
 
 ## 2. Put it on GitHub Pages
 
