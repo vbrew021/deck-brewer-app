@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.11.0 (October 10, 2026)
+- Added: Checkup on the Deck tab. Instant checks for deck size, Basic Pokémon
+  and mulligan odds, evolution lines, Energy types, Supporters, draw and
+  search cards, and switching, explained simply, plus a button that asks the
+  coach for a full review.
+- Added: Matchups on the Deck tab. Ask the coach how the deck does against
+  today's top decks on Limitless, a deck you name, or one of your own decks.
+- Added: Image & print on the Deck tab. Makes a Limitless-style deck image to
+  download or share, and opens a printable tournament-style decklist.
+- No Firebase changes needed.
+
 ## 1.10.0 (October 10, 2026)
 - Added: Want list tab. It lists every card your chosen decks need that isn't
   in your Card Library (build all at once, or one at a time), plus cards you

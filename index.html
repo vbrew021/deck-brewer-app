@@ -296,6 +296,18 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .compare td, .compare th { text-align: left; }
 .compare tr.more td:last-child { color: var(--need); }
 .compare tr.less td:last-child { color: var(--have); }
+.checks { list-style: none; margin: 10px 0 16px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.checks li { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; padding: 10px 12px; border-radius: var(--r-md); background: var(--soft); }
+.checks p { margin: 2px 0 0; }
+.check-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font-weight: 800; color: #fff; }
+.checks li.ok .check-icon { background: var(--have); }
+.checks li.warn .check-icon { background: var(--short); }
+.matchup-opt { padding: 12px 14px; border-radius: var(--r-md); background: var(--soft); margin: 10px 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.matchup-opt p { margin: 0; }
+.matchup-opt .searchbar { width: 100%; margin: 0; }
+.deck-image { width: 100%; height: auto; border-radius: var(--r-md); display: block; }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+a.btn.disabled { opacity: .5; pointer-events: none; }
 .chat-note { text-align: center; font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
 .thinking { color: var(--muted); font-style: italic; }
 .suggest { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -347,7 +359,7 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.10.0';
+const VERSION = '1.11.0';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -1267,7 +1279,8 @@ function ImportBox({ title, hint, actions, onDone }) {
 }
 
 /* ---------- Deck tab ---------- */
-function DeckView({ deck, decks, collection, stats, onOpen, onImport }) {
+function DeckView({ deck, decks, collection, stats, onOpen, onImport, onAsk, format }) {
+  const [panel, setPanel] = useState(null); // 'checkup' | 'matchups' | 'share'
   const [tester, setTester] = useState(false);
   const [comparing, setComparing] = useState(false);
   const conflicts = useMemo(() => sharedConflicts(deck, decks, collection), [deck, decks, collection]);
@@ -1292,6 +1305,9 @@ function DeckView({ deck, decks, collection, stats, onOpen, onImport }) {
         <button class="btn ghost" onClick=${copy} disabled=${!deck.entries.length}>${copied ? 'Copied' : 'Copy list'}</button>
         <button class="btn ghost" onClick=${() => setTester(true)} disabled=${!stats.total}>Test draw</button>
         <button class="btn ghost" onClick=${() => setComparing(true)} disabled=${decks.length < 2}>Compare</button>
+        <button class="btn ghost" onClick=${() => setPanel('checkup')} disabled=${!stats.total}>Checkup</button>
+        <button class="btn ghost" onClick=${() => setPanel('matchups')} disabled=${!stats.total}>Matchups</button>
+        <button class="btn ghost" onClick=${() => setPanel('share')} disabled=${!stats.total}>Image & print</button>
       </div>
     </div>
     ${stats.issues.length > 0 && stats.total > 0 && html`<ul class="issues">${stats.issues.map((i) => html`<li>${i}</li>`)}</ul>`}
@@ -1302,6 +1318,9 @@ function DeckView({ deck, decks, collection, stats, onOpen, onImport }) {
     </details>`}
     ${tester && html`<${DrawTester} deck=${deck} onOpen=${onOpen} onClose=${() => setTester(false)} />`}
     ${comparing && html`<${DeckCompare} deck=${deck} decks=${decks} onOpen=${onOpen} onClose=${() => setComparing(false)} />`}
+    ${panel === 'checkup' && html`<${DeckCheckup} deck=${deck} format=${format} onOpen=${onOpen} onAsk=${(t) => { setPanel(null); onAsk(t); }} onClose=${() => setPanel(null)} />`}
+    ${panel === 'matchups' && html`<${Matchups} deck=${deck} decks=${decks} onAsk=${(t, web) => { setPanel(null); onAsk(t, web); }} onClose=${() => setPanel(null)} />`}
+    ${panel === 'share' && html`<${ShareDeck} deck=${deck} onClose=${() => setPanel(null)} />`}
     ${showImport && html`<${ImportBox} title="Import a decklist"
       hint="Paste a list exported from Limitless, Pokémon TCG Live, or a chat. The badges will show which cards you already own."
       actions=${[{ mode: 'replace', label: 'Replace this deck', primary: true }, { mode: 'add', label: 'Add to this deck' }]}
@@ -1483,6 +1502,205 @@ function VersionPicker({ name, currentId, onPick, onClose, title = 'Choose the r
         <span class="small muted">${c.setCode} ${c.number}${c.setName ? ` · ${c.setName}` : ''}</span>
         ${c.id === currentId && html`<span class="small version-tag">Current</span>`}
       </button>`)}</div>
+    </div>
+  </div>`;
+}
+
+/* ---------- Deck checkup ---------- */
+const textOf = (c) => [...c.attacks.map((a) => a.text), ...c.abilities.map((a) => a.text), ...c.rules].join(' ').toLowerCase();
+const ENERGY_NAMES = ['Grass', 'Fire', 'Water', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal'];
+function deckChecks(deck) {
+  const E = deck.entries, total = E.reduce((n, e) => n + e.count, 0);
+  const sum = (f) => E.filter((e) => f(e.card)).reduce((n, e) => n + e.count, 0);
+  const names = new Set(E.map((e) => e.card.name));
+  const basics = sum(isBasicMon);
+  const energy = sum((c) => sectionOf(c) === 'energy');
+  const supporters = sum((c) => c.subtypes.includes('Supporter'));
+  const draw = sum((c) => sectionOf(c) !== 'energy' && /\bdraw\b/.test(textOf(c)));
+  const search = sum((c) => sectionOf(c) !== 'energy' && /search your deck/.test(textOf(c)));
+  const switching = sum((c) => sectionOf(c) === 'trainer' && /switch/.test(textOf(c)));
+  const candy = sum((c) => c.name === 'Rare Candy');
+  const checks = [];
+  const add = (ok, title, detail) => checks.push({ ok, title, detail });
+  add(total === 60, `${total} cards`, total === 60 ? 'Exactly 60, ready to play.' : `A deck needs exactly 60 cards (${total < 60 ? `${60 - total} more` : `${total - 60} too many`}).`);
+  const noBasic = total >= 7 ? Math.exp(logChoose(total - basics, 7) - logChoose(total, 7)) : 1;
+  add(basics >= 8, `${basics} Basic Pokémon`, `About ${pct(noBasic)} of opening hands would be a mulligan (no Basic). ${basics < 8 ? 'Most decks play 8 to 12 so you can start fast.' : 'That’s a healthy number.'}`);
+  // Evolution lines
+  for (const e of E) {
+    const c = e.card;
+    if (sectionOf(c) !== 'pokemon' || !c.evolvesFrom || names.has(c.evolvesFrom)) continue;
+    const isStage2 = c.subtypes.includes('Stage 2');
+    add(false, `${c.name} needs ${c.evolvesFrom}`, isStage2 && candy ? `There’s no ${c.evolvesFrom} in the deck. Rare Candy can skip it, but adding at least one ${c.evolvesFrom} is safer.` : `${c.name} evolves from ${c.evolvesFrom}, which isn’t in the deck, so it can’t be played.`);
+  }
+  // Energy types needed by attacks
+  const needed = new Set();
+  E.filter((e) => sectionOf(e.card) === 'pokemon').forEach((e) => e.card.attacks.forEach((a) => (a.cost || []).forEach((t) => ENERGY_NAMES.includes(t) && needed.add(t))));
+  const basicTypes = new Set(E.filter((e) => isBasicEnergy(e.card)).map((e) => ENERGY_NAMES.find((t) => e.card.name.includes(t))).filter(Boolean));
+  const special = sum((c) => sectionOf(c) === 'energy' && !isBasicEnergy(c));
+  const missingTypes = [...needed].filter((t) => !basicTypes.has(t));
+  add(!missingTypes.length || special > 0, `${energy} Energy`, missingTypes.length
+    ? `Attacks need ${missingTypes.join(' and ')} Energy, but there’s no basic ${missingTypes.join(' or ')} Energy${special ? ' (check that your Special Energy covers it)' : ''}.`
+    : energy < 6 ? 'That’s on the low side unless the deck has ways to get Energy back or attacks that don’t need much.' : energy > 16 ? 'That’s a lot. Most decks play about 8 to 14, so some could become draw or search cards.' : 'A sensible amount for most decks.');
+  add(supporters >= 8, `${supporters} Supporters`, supporters >= 8 ? 'Good: you’ll usually have a Supporter to play each turn.' : 'Most decks play 8 or more so there’s a Supporter for most turns.');
+  add(draw + search >= 10, `${draw} draw and ${search} search cards`, draw + search >= 10 ? 'Plenty of ways to find what you need.' : 'More cards that draw or search your deck (like Arven, Iono, Nest Ball or Ultra Ball) make the deck more consistent.');
+  add(switching >= 1, `${switching} switching cards`, switching ? 'You can get a stuck Pokémon out of the Active Spot.' : 'Consider a card like Switch so your Active Pokémon isn’t stuck.');
+  return checks;
+}
+function DeckCheckup({ deck, format, onOpen, onAsk, onClose }) {
+  useEscape(onClose);
+  const checks = useMemo(() => deckChecks(deck), [deck]);
+  const warnings = checks.filter((c) => !c.ok).length;
+  const prompt = `Please give "${deck.name}" a full checkup for the ${formatName(format)} format. Look at consistency (Basic Pokémon, draw and search, Supporters), Energy, evolution lines, how the deck wins, and its weak spots. Explain it simply, then suggest specific changes as a mix of cards from our Card Library and cards worth picking up.`;
+  return html`<div class="scrim" onClick=${onClose}>
+    <div class="modal tester" role="dialog" aria-modal="true" aria-label="Deck checkup" onClick=${(e) => e.stopPropagation()}>
+      <div class="tester-head"><h2>Deck checkup</h2><button class="btn ghost small" onClick=${onClose}>Close</button></div>
+      <p class="small">${warnings ? `${warnings} thing${warnings === 1 ? '' : 's'} to look at.` : 'Everything here looks good.'} These are quick rule-of-thumb checks; good decks sometimes break them on purpose.</p>
+      <ul class="checks">${checks.map((c) => html`<li class=${c.ok ? 'ok' : 'warn'}><span class="check-icon" aria-hidden="true">${c.ok ? '✓' : '!'}</span>
+        <div><strong>${c.title}</strong><p class="small">${c.detail}</p></div></li>`)}</ul>
+      <div class="row"><button class="btn" onClick=${() => onAsk(prompt)}>Ask the coach for a full checkup</button></div>
+    </div>
+  </div>`;
+}
+
+/* ---------- Matchup advice ---------- */
+function Matchups({ deck, decks, onAsk, onClose }) {
+  useEscape(onClose);
+  const [opp, setOpp] = useState('');
+  const others = decks.filter((d) => d.id !== deck.id && d.entries.length);
+  const [mine, setMine] = useState(others[0]?.id || '');
+  const ask = (text, web) => onAsk(text, web);
+  return html`<div class="scrim" onClick=${onClose}>
+    <div class="modal tester" role="dialog" aria-modal="true" aria-label="Matchups" onClick=${(e) => e.stopPropagation()}>
+      <div class="tester-head"><h2>Matchups</h2><button class="btn ghost small" onClick=${onClose}>Close</button></div>
+      <p class="small">Ask the coach how “${deck.name}” does against other decks and what to watch for.</p>
+      <div class="matchup-opt">
+        <strong>Today’s top decks</strong>
+        <p class="small muted">Looks up the most popular decks on Limitless right now (uses web search).</p>
+        <button class="btn" onClick=${() => ask(`Look up the most popular decks in the current Standard format on limitlesstcg.com. For the top 5, tell me how "${deck.name}" matches up against each one: who's favored, the key cards or threats to watch for, and one tip for playing the matchup. Suggest any cards that would help our worst matchups.`, true)}>Check the top decks</button>
+      </div>
+      <div class="matchup-opt">
+        <strong>A specific deck</strong>
+        <div class="searchbar"><input value=${opp} onInput=${(e) => setOpp(e.target.value)} placeholder="Like Dragapult ex or Gardevoir ex" aria-label="Opponent's deck" />
+          <button class="btn" disabled=${!opp.trim()} onClick=${() => ask(`How does "${deck.name}" match up against ${opp.trim()}? Look up current ${opp.trim()} lists on limitlesstcg.com. Tell me who's favored, what their deck tries to do, the key threats, how to play the matchup turn by turn, and cards that would help.`, true)}>Ask</button></div>
+      </div>
+      <div class="matchup-opt">
+        <strong>One of our decks</strong>
+        <p class="small muted">Great before a game at home.</p>
+        ${others.length ? html`<div class="searchbar">
+          <select value=${mine} onChange=${(e) => setMine(e.target.value)} aria-label="Our other deck">${others.map((d) => html`<option value=${d.id}>${d.name}</option>`)}</select>
+          <button class="btn" onClick=${() => { const d = others.find((x) => x.id === mine); if (d) ask(`Here is our other deck, "${d.name}":\n${exportDecklist(d.entries)}\n\nHow does "${deck.name}" match up against it? Who's favored, what should each player watch out for, and give each side one tip. Keep it fun and simple to follow.`, false); }}>Ask</button>
+        </div>` : html`<p class="small muted">Make another deck to compare against.</p>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- Deck image and printable list ---------- */
+function loadImage(src) {
+  return new Promise((resolve) => {
+    if (!src) return resolve(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+async function drawDeckImage(deck, withPictures = true) {
+  const cw = 120, ch = 168, gap = 10, pad = 28, head = 86, foot = 34;
+  const groups = [['pokemon', 'Pokémon'], ['trainer', 'Trainers'], ['energy', 'Energy']].map(([k, label]) => ({ label, list: sortEntries(deck.entries.filter((e) => sectionOf(e.card) === k)) })).filter((g) => g.list.length);
+  const cols = Math.min(10, Math.max(5, ...groups.map((g) => g.list.length))); // narrower image for small decks
+  const rowsFor = (g) => Math.ceil(g.list.length / cols);
+  const height = pad + head + groups.reduce((n, g) => n + 30 + rowsFor(g) * (ch + gap), 0) + foot;
+  const width = pad * 2 + cols * cw + (cols - 1) * gap;
+  const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#1A2340'; ctx.fillRect(0, 0, width, height);
+  const total = deck.entries.reduce((n, e) => n + e.count, 0);
+  ctx.fillStyle = '#FFFFFF'; ctx.font = '800 38px "Bricolage Grotesque", system-ui, sans-serif'; ctx.fillText(deck.name, pad, pad + 40);
+  ctx.fillStyle = '#AEB8D4'; ctx.font = '500 18px Lexend, system-ui, sans-serif';
+  ctx.fillText(groups.map((g) => `${g.list.reduce((n, e) => n + e.count, 0)} ${g.label}`).join('  ·  ') + `  ·  ${total} cards`, pad, pad + 70);
+  const images = withPictures ? await Promise.all(deck.entries.map((e) => loadImage(e.card.image))) : [];
+  const imgFor = (e) => images[deck.entries.indexOf(e)] || null;
+  const accent = { 'Pokémon': '#A98BEA', Trainers: '#6EA6F2', Energy: '#E8B33A' };
+  let y = pad + head;
+  for (const g of groups) {
+    ctx.fillStyle = accent[g.label]; ctx.font = '700 20px Lexend, system-ui, sans-serif'; ctx.fillText(`${g.label} (${g.list.reduce((n, e) => n + e.count, 0)})`, pad, y + 20);
+    y += 30;
+    g.list.forEach((e, i) => {
+      const x = pad + (i % cols) * (cw + gap), yy = y + Math.floor(i / cols) * (ch + gap);
+      const img = imgFor(e);
+      ctx.save(); roundRect(ctx, x, yy, cw, ch, 8); ctx.clip();
+      if (img) ctx.drawImage(img, x, yy, cw, ch);
+      else { ctx.fillStyle = '#2C3B6B'; ctx.fillRect(x, yy, cw, ch); ctx.fillStyle = '#FFFFFF'; ctx.font = '600 14px Lexend, system-ui, sans-serif';
+        const words = e.card.name.split(' '); let line = '', ly = yy + 60;
+        for (const w of words) { if (ctx.measureText(line + w).width > cw - 16) { ctx.fillText(line, x + 8, ly); line = ''; ly += 18; } line += w + ' '; }
+        ctx.fillText(line, x + 8, ly); ctx.fillStyle = '#AEB8D4'; ctx.font = '12px Lexend, system-ui, sans-serif'; ctx.fillText(`${e.card.setCode} ${e.card.number}`, x + 8, yy + ch - 12); }
+      ctx.restore();
+      ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(x + cw - 18, yy + ch - 18, 16, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1A2340'; ctx.font = '800 18px "Bricolage Grotesque", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(String(e.count), x + cw - 18, yy + ch - 12); ctx.textAlign = 'left';
+    });
+    y += rowsFor(g) * (ch + gap);
+  }
+  ctx.fillStyle = '#7F8AA8'; ctx.font = '14px Lexend, system-ui, sans-serif'; ctx.fillText('Made with Deck Brews', pad, height - 14);
+  const missing = withPictures ? deck.entries.filter((e, i) => !images[i]).length : deck.entries.length;
+  return new Promise((resolve, reject) => { try { canvas.toBlob((b) => (b ? resolve({ blob: b, missing }) : reject(new Error('no image'))), 'image/png'); } catch (e) { reject(e); } });
+}
+function printDecklist(deck, player) {
+  const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  const sec = (k) => sortEntries(deck.entries.filter((e) => sectionOf(e.card) === k));
+  const total = (list) => list.reduce((n, e) => n + e.count, 0);
+  const mons = sec('pokemon'), trainers = sec('trainer'), energy = sec('energy');
+  const rows = (list, withSet) => list.map((e) => `<tr><td class="q">${e.count}</td><td>${esc(e.card.name)}</td>${withSet ? `<td>${esc(e.card.setCode)}</td><td>${esc(e.card.number)}</td>` : ''}</tr>`).join('');
+  const w = window.open('', '_blank');
+  if (!w) { alert('Your browser blocked the print window. Allow pop-ups for this site and try again.'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(deck.name)} decklist</title><style>
+    body{font:13px/1.35 Arial,Helvetica,sans-serif;color:#000;margin:24px}h1{font-size:20px;margin:0 0 4px}.who{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 24px;margin:12px 0 16px}
+    .who div{border-bottom:1px solid #000;padding:14px 0 2px;font-size:11px;color:#333}.who b{font-size:13px;color:#000}table{width:100%;border-collapse:collapse;margin:0 0 14px}
+    th,td{border:1px solid #000;padding:3px 6px;text-align:left}th{background:#eee}td.q{width:40px;text-align:center}.tot{font-weight:bold}.btn{margin-bottom:16px}@media print{.btn{display:none}}
+  </style></head><body><button class="btn" onclick="print()">Print</button>
+  <h1>${esc(deck.name)}</h1><div>Pokémon Trading Card Game decklist · ${total(deck.entries)} cards</div>
+  <div class="who"><div>Player name: <b>${esc(player || '')}</b></div><div>Player ID:</div><div>Date of birth:</div><div>Age division:</div></div>
+  <table><thead><tr><th>Qty</th><th>Pokémon (${total(mons)})</th><th>Set</th><th>No.</th></tr></thead><tbody>${rows(mons, true)}</tbody></table>
+  <table><thead><tr><th>Qty</th><th>Trainer cards (${total(trainers)})</th></tr></thead><tbody>${rows(trainers, false)}</tbody></table>
+  <table><thead><tr><th>Qty</th><th>Energy (${total(energy)})</th></tr></thead><tbody>${rows(energy, false)}</tbody></table>
+  <div class="tot">Total cards: ${total(deck.entries)}</div></body></html>`);
+  w.document.close();
+}
+function ShareDeck({ deck, onClose }) {
+  useEscape(onClose);
+  const [img, setImg] = useState({ busy: true, url: '', blob: null, note: '' });
+  const [player, setPlayer] = usePref('db.playerName', '');
+  useEffect(() => {
+    let live = true, url = '';
+    (async () => {
+      let blob, note = '';
+      try {
+        const r = await drawDeckImage(deck, true); blob = r.blob;
+        if (r.missing) note = r.missing === deck.entries.length ? 'Card pictures couldn’t be loaded into the image, so it shows card names instead.' : `${r.missing} card picture${r.missing === 1 ? '' : 's'} couldn’t be loaded, so those show the card name instead.`;
+      } catch { blob = (await drawDeckImage(deck, false)).blob; note = 'Card pictures couldn’t be added to the image, so it shows card names instead.'; }
+      url = URL.createObjectURL(blob);
+      if (live) setImg({ busy: false, url, blob, note });
+    })().catch(() => live && setImg({ busy: false, url: '', blob: null, note: 'The image couldn’t be made.' }));
+    return () => { live = false; if (url) URL.revokeObjectURL(url); };
+  }, [deck]);
+  const fileName = `${deck.name.replace(/[^\w\- ]+/g, '').trim() || 'deck'}.png`;
+  const canShare = img.blob && navigator.canShare?.({ files: [new File([img.blob], fileName, { type: 'image/png' })] });
+  async function share() { try { await navigator.share({ files: [new File([img.blob], fileName, { type: 'image/png' })], title: deck.name }); } catch {} }
+  return html`<div class="scrim" onClick=${onClose}>
+    <div class="modal tester" role="dialog" aria-modal="true" aria-label="Deck image and printable list" onClick=${(e) => e.stopPropagation()}>
+      <div class="tester-head"><h2>Image & print</h2><button class="btn ghost small" onClick=${onClose}>Close</button></div>
+      ${img.busy ? html`<p class="small muted">Making the image…</p>` : img.url && html`<img class="deck-image" src=${img.url} alt=${`Deck image for ${deck.name}`} />`}
+      ${img.note && html`<p class="small muted">${img.note}</p>`}
+      <div class="row" style="margin:10px 0 18px">
+        <a class=${`btn ${img.url ? '' : 'disabled'}`} href=${img.url || undefined} download=${fileName}>Download image</a>
+        ${canShare && html`<button class="btn ghost" onClick=${share}>Share…</button>`}
+      </div>
+      <h3>Printable decklist</h3>
+      <p class="small muted">A tournament-style list with spots for player details. Opens in a new window to print or save as PDF.</p>
+      <div class="searchbar"><input value=${player} onInput=${(e) => setPlayer(e.target.value)} placeholder="Player name (optional)" aria-label="Player name" />
+        <button class="btn" onClick=${() => printDecklist(deck, player)}>Open printable list</button></div>
     </div>
   </div>`;
 }
@@ -1904,7 +2122,8 @@ function addNote(notes, note) {
   const line = `- ${note.replace(/^[-•]\s*/, '').trim()}`;
   return [notes.trim(), line].filter(Boolean).join('\n').slice(-NOTES_LIMIT);
 }
-function AssistantPanel({ deck, collection, format, store, notes, otherDecks, onAdd, onRemove, onOpen, onOwned, wants = {} }) {
+function AssistantPanel({ deck, collection, format, store, notes, otherDecks, onAdd, onRemove, onOpen, onOwned, wants = {}, prompt }) {
+  const panelRef = useRef(null);
   const [web, setWeb] = usePref('db.webSearch', true);
   const [messages, setMessagesRaw] = useState([]), [input, setInput] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const [copied, setCopied] = useState(false), [chatLoaded, setChatLoaded] = useState(false);
@@ -1929,12 +2148,20 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
     setMessagesRaw([]); store.deleteChat(deck.id).catch(() => {});
   }
 
-  async function send(text) {
+  // Questions sent from elsewhere (Checkup, Matchups) arrive here.
+  const lastPrompt = useRef(prompt?.id);
+  useEffect(() => {
+    if (!prompt || prompt.id === lastPrompt.current) return;
+    lastPrompt.current = prompt.id;
+    panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (COACH_READY && !busy) send(prompt.text, prompt.web); else setInput(prompt.text);
+  }, [prompt]);
+  async function send(text, webOverride) {
     if (!text.trim() || busy || !COACH_READY) return;
     const history = messages.map((m) => ({ role: m.role, content: m.role === 'assistant' ? m.text + suggestionOutcomes(m) : m.text }));
     setMessagesRaw((m) => [...m, { role: 'user', text }]); setInput(''); setBusy(true); setError(null);
     try {
-      const d = await askCoach({ history, message: text, deck, collection, format, notes, otherDecks, web });
+      const d = await askCoach({ history, message: text, deck, collection, format, notes, otherDecks, web: webOverride ?? web });
       let suggestions = d.suggestions;
       if (suggestions.length) {
         let res = [];
@@ -1968,7 +2195,7 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
     catch { window.prompt('Copy this, then paste it into Claude:', text); }
   }
 
-  return html`<aside class="assistant">
+  return html`<aside class="assistant" ref=${panelRef}>
     <header><h2>Deck coach</h2>${messages.length > 0 && html`<button class="btn ghost small" onClick=${newChat}>New chat</button>`}</header>
     <div class="thread" ref=${threadRef} aria-live="polite">
       ${messages.length > 0 && html`<p class="chat-note">This chat is saved with “${deck.name}”.</p>`}
@@ -2101,6 +2328,8 @@ function App() {
   const [modalCard, setModalCard] = useState(null);
   const [settings, setSettings] = useState(false);
   const [nameDraft, setNameDraft] = useState(null);
+  const [coachPrompt, setCoachPrompt] = useState(null);
+  const askCoachFrom = (text, web = false) => setCoachPrompt({ id: Date.now(), text, web });
   const [theme, setTheme] = usePref('db.theme', 'system');
   const [localInfo, setLocalInfo] = useState(LOCAL);
   useEffect(() => { localReady.then((l) => setLocalInfo(l)); }, []);
@@ -2253,12 +2482,12 @@ function App() {
 
     <div class="layout">
       <main>
-        ${tab === 'deck' && html`<${DeckView} key=${deck.id} deck=${deck} decks=${decks} collection=${collection} stats=${stats} onOpen=${setModalCard} onImport=${importToDeck} />`}
+        ${tab === 'deck' && html`<${DeckView} key=${deck.id} deck=${deck} decks=${decks} collection=${collection} format=${format} onAsk=${askCoachFrom} stats=${stats} onOpen=${setModalCard} onImport=${importToDeck} />`}
         ${tab === 'search' && html`<${SearchView} onOpen=${setModalCard} onAddDeck=${(c) => addToDeck(c)} onAddOwned=${(c) => store.setOwned(c, ownedExact(c) + 1)} ownedOf=${ownedExact} deckCountOf=${deckCountOf} onAddExtra=${(name) => setExtraForm({ name })} />`}
         ${tab === 'collection' && html`<${CollectionView} collection=${collection} store=${store} onOpen=${setModalCard} />`}
         ${tab === 'wants' && html`<${WantListView} decks=${decks} collection=${collection} wants=${data.wants || {}} store=${store} onOpen=${setModalCard} />`}
       </main>
-      <${AssistantPanel} key=${deck.id} deck=${deck} collection=${collection} format=${format}
+      <${AssistantPanel} key=${deck.id} deck=${deck} collection=${collection} format=${format} prompt=${coachPrompt}
         notes=${data.coachNotes || ''} otherDecks=${describeDecks(decks, deck.id)}
         onOwned=${(card, count) => store.setOwned(card, Math.max(ownedExact(card), count))} wants=${data.wants || {}}
         store=${store} onAdd=${addToDeck} onRemove=${removeFromDeck} onOpen=${setModalCard} />

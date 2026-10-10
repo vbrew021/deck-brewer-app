@@ -75,6 +75,15 @@ an AI coach to find substitutes and understand the deck.
 - Set checklists: `SetChecklist` lists a set's cards from the saved card data
   (TCGdex live as a fallback) with +/− buttons that change this exact print's
   library count.
+- Checkup: `deckChecks()` runs rule-of-thumb checks locally; "Ask the coach"
+  sends a prepared prompt. Matchups also sends prepared prompts (top decks and
+  named decks use web search; our own decks include the other decklist).
+  Other screens send coach questions through the App's `askCoachFrom()` /
+  `coachPrompt`, which the coach panel sends (or puts in the text box if the
+  coach isn't set up).
+- Image & print: `drawDeckImage()` draws a canvas image (card pictures load
+  with CORS; any that can't load show the card name instead), and
+  `printDecklist()` opens a printable tournament-style list in a new window.
 - Compare: `DeckCompare` lines up two decks by card (reprints together) and
   shows the differences.
 - Advanced search: `blankFilters()` defines the filter fields, `CardFilters`
