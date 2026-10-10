@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Deck Binder</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Lexend:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --page: #E9EEF5;      /* cool desk surface */
+  --paper: #FFFFFF;
+  --ink: #1A2340;
+  --muted: #5E6886;
+  --binder: #24315C;    /* binder sheet */
+  --pocket: #2F3E70;
+  --line: #CDD5E3;
+  --pokemon: #8B5CD6;   /* section colors */
+  --trainer: #2F74C9;
+  --energy: #D99A12;
+  --have: #23905A;
+  --short: #D9771E;
+  --need: #C23B33;
+  --focus: #F2C230;
+  --r-sm: 6px; --r-md: 10px; --r-lg: 16px;
+  --display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  --body: 'Lexend', 'Segoe UI', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 var(--body); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; letter-spacing: -0.01em; }
+.muted { color: var(--muted); } .small { font-size: 13px; } .warn { color: var(--need); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .row.end { margin-left: auto; }
+.loading { display: grid; place-items: center; min-height: 100vh; color: var(--muted); }
+
+/* Buttons */
+.btn { background: var(--binder); color: #fff; border: 0; border-radius: var(--r-sm); padding: 8px 14px; font-weight: 600; cursor: pointer; }
+.btn:hover:not(:disabled) { background: #1A2548; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
+.btn.ghost:hover:not(:disabled) { background: var(--paper); }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+.btn.danger { color: var(--need); }
+.mini { border: 0; background: var(--binder); color: #fff; border-radius: var(--r-sm); padding: 4px 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.mini.ghost { background: var(--paper); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.mini:disabled { background: var(--have); opacity: 1; cursor: default; }
+
+/* Header */
+.app { max-width: 1440px; margin: 0 auto; padding: 16px 20px 40px; }
+.top { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.brand { font-family: var(--display); font-weight: 800; font-size: 24px; }
+.deckpick { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; flex: 1; }
+.deckpick select, .deckpick input, .format, .searchbar input, .searchbar select {
+  background: var(--paper); border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 7px 10px;
+}
+.deckpick input { font-weight: 600; min-width: 180px; }
+.tabs { display: flex; gap: 4px; margin: 18px 0 14px; border-bottom: 2px solid var(--line); }
+.tabs button { background: none; border: 0; padding: 10px 16px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+.tabs button.on { color: var(--ink); border-color: var(--binder); }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start; }
+@media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+
+/* Stat bar */
+.statbar { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; background: var(--paper); border-radius: var(--r-md); padding: 12px 16px; margin-bottom: 12px; }
+.count60 { display: flex; align-items: baseline; gap: 4px; }
+.count60 b { font-family: var(--display); font-size: 32px; line-height: 1; }
+.count60 span { color: var(--muted); }
+.count60.done b { color: var(--have); }
+.split { display: flex; gap: 14px; font-weight: 600; font-size: 14px; }
+.split span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: currentColor; }
+.sec-pokemon.split, .split .sec-pokemon { color: var(--pokemon); }
+.split .sec-trainer { color: var(--trainer); }
+.split .sec-energy { color: var(--energy); }
+.missing { font-weight: 600; color: var(--short); }
+.missing.none { color: var(--have); }
+.issues { margin: 0 0 12px; padding: 10px 14px 10px 30px; background: #FFF3E6; border-radius: var(--r-md); color: #7A3E06; font-size: 14px; }
+
+/* Binder sheets: the deck's signature look */
+.binder { background: var(--binder); border-radius: var(--r-lg); padding: 14px 16px 18px; margin-bottom: 16px; border-left: 8px solid var(--accent); }
+.binder.sec-pokemon { --accent: var(--pokemon); }
+.binder.sec-trainer { --accent: var(--trainer); }
+.binder.sec-energy { --accent: var(--energy); }
+.binder h3 { color: #fff; font-size: 18px; margin-bottom: 12px; display: flex; gap: 10px; align-items: baseline; }
+.binder h3 span { font-family: var(--body); font-size: 14px; font-weight: 600; color: var(--accent); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 12px; }
+.grid.wide { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+
+.tile { display: flex; flex-direction: column; gap: 6px; }
+.pocket { position: relative; display: block; padding: 4px; border: 0; border-radius: var(--r-md); background: var(--pocket); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); cursor: pointer; aspect-ratio: 63 / 88; }
+.search .pocket, .collection .pocket, .assistant .pocket { background: #D9E0EC; }
+.pocket img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: 7px; }
+.pocket:hover img { transform: translateY(-2px); transition: transform .15s; }
+@media (prefers-reduced-motion: reduce) { .pocket:hover img { transform: none; } }
+.noimg { display: grid; place-items: center; height: 100%; color: #fff; font-size: 12px; padding: 6px; }
+.qty { position: absolute; top: -6px; left: -6px; min-width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: #fff; color: var(--ink); font-family: var(--display); font-weight: 800; font-size: 16px; box-shadow: 0 2px 0 rgba(0,0,0,.25); }
+.own { position: absolute; left: 6px; right: 6px; bottom: 6px; text-align: center; font-size: 11px; font-weight: 600; color: #fff; border-radius: 4px; padding: 1px 4px; }
+.own-have { background: var(--have); } .own-short { background: var(--short); } .own-need { background: var(--need); }
+.tile-actions { display: flex; gap: 6px; justify-content: center; }
+.empty { background: var(--paper); border-radius: var(--r-md); padding: 28px; text-align: center; color: var(--muted); }
+
+/* Import, search */
+.import { background: var(--paper); border-radius: var(--r-md); padding: 14px 16px; margin-bottom: 14px; }
+.import h3 { font-size: 17px; }
+.import p { margin: 4px 0 10px; }
+textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 10px; resize: vertical; background: #F7F9FC; font-size: 14px; }
+.import textarea { margin-bottom: 10px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.searchbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+.searchbar input { flex: 1; min-width: 200px; }
+.check { display: flex; gap: 6px; align-items: center; font-size: 14px; }
+.more { display: block; margin: 16px auto 0; }
+
+/* Assistant */
+.assistant { position: sticky; top: 16px; background: var(--paper); border-radius: var(--r-lg); display: flex; flex-direction: column; max-height: calc(100vh - 32px); border-top: 6px solid var(--binder); }
+@media (max-width: 980px) { .assistant { position: static; max-height: none; } }
+.assistant header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px 8px; }
+.assistant h2 { font-size: 20px; }
+.thread { flex: 1; overflow-y: auto; padding: 4px 16px 12px; min-height: 240px; }
+.starters { display: flex; flex-direction: column; gap: 8px; }
+.starter { text-align: left; background: #F2F5FA; border: 0; border-radius: var(--r-md); padding: 10px 12px; cursor: pointer; font-size: 14px; }
+.starter:hover { background: #E5EBF4; }
+.msg { margin: 10px 0; }
+.msg p { margin: 0; white-space: pre-wrap; }
+.msg.user p { background: var(--binder); color: #fff; padding: 9px 12px; border-radius: var(--r-md) var(--r-md) 2px var(--r-md); margin-left: 28px; }
+.msg.assistant p { font-size: 14.5px; }
+.thinking { color: var(--muted); font-style: italic; }
+.suggest { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.sugg { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: start; padding: 8px; border-radius: var(--r-md); background: #F4F6FA; border-left: 4px solid var(--have); }
+.sugg.remove { border-left-color: var(--need); }
+.sugg-body { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.ghosted { aspect-ratio: 63/88; background: #DDE3EE; border-radius: var(--r-sm); display: grid; place-items: center; font-size: 11px; text-align: center; padding: 4px; }
+.composer { display: flex; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--line); align-items: flex-end; }
+.composer textarea { flex: 1; }
+
+/* Modal */
+.scrim { position: fixed; inset: 0; background: rgba(16, 22, 44, .6); display: grid; place-items: center; padding: 16px; z-index: 10; }
+.modal { background: var(--paper); border-radius: var(--r-lg); display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 20px; padding: 20px; max-width: 760px; width: 100%; max-height: 92vh; overflow: auto; }
+@media (max-width: 640px) { .modal { grid-template-columns: 1fr; } .modal-img { max-width: 260px; margin: 0 auto; } }
+.modal-img { width: 100%; border-radius: 12px; }
+.modal-body h2 { font-size: 24px; }
+.modal-body p { margin: 4px 0; }
+.legal { font-weight: 600; font-size: 14px; } .legal.ok { color: var(--have); } .legal.no { color: var(--need); }
+.cardtext { margin: 10px 0; font-size: 14px; }
+.cardtext p { margin: 2px 0 0; color: var(--muted); }
+.modal-controls { display: flex; flex-direction: column; gap: 10px; margin: 16px 0; }
+.stepper { display: flex; align-items: center; gap: 8px; }
+.stepper-label { flex: 1; font-weight: 600; font-size: 14px; }
+.stepper button { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--binder); color: #fff; font-size: 18px; cursor: pointer; }
+.stepper-val { min-width: 28px; text-align: center; font-family: var(--display); font-weight: 800; font-size: 20px; }
+
+/* Added for the GitHub Pages version */
+.top .gear { margin-left: auto; }
+.sync { font-size: 13px; color: var(--muted); }
+.sync b { color: var(--have); }
+.connect { max-width: 440px; margin: 12vh auto; background: var(--paper); border-radius: var(--r-lg); padding: 28px; border-top: 6px solid var(--binder); }
+.connect h1 { font-size: 30px; margin-bottom: 6px; }
+.connect label, .settings label { display: block; font-weight: 600; font-size: 14px; margin: 14px 0 4px; }
+.connect input, .settings input, .settings select { width: 100%; background: #F7F9FC; border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 9px 10px; }
+.pw { display: flex; gap: 6px; } .pw input { flex: 1; }
+.settings { max-width: 520px; display: block; }
+.settings p { margin: 4px 0; }
+.foot { margin-top: 28px; text-align: center; color: var(--muted); font-size: 12px; }
+.btn, .mini, .stepper button, .tabs button { min-height: 36px; }
+.search .noimg, .collection .noimg, .assistant .noimg { color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="app"><div class="loading">Opening the binder…</div></div>
+<script type="module">
+import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
+import { firebaseConfig } from './firebase-config.js';
+
+const VERSION = '1.0.0';
+const DEFAULT_MODEL = 'claude-sonnet-5-5';
+const FIREBASE_READY = !!(firebaseConfig && firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('PASTE'));
+
+/* ---------- Per-device settings ---------- */
+const load = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+function usePref(key, init) {
+  const [v, setV] = useState(() => load(key, init));
+  useEffect(() => save(key, v), [key, v]);
+  return [v, setV];
+}
+const makeId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+/* ---------- Card database (pokemontcg.io, called from the browser) ---------- */
+const TCG = 'https://api.pokemontcg.io/v2';
+async function tcg(path, params = {}) {
+  const url = new URL(TCG + path);
+  for (const [k, v] of Object.entries(params)) if (v != null && v !== '') url.searchParams.set(k, v);
+  const key = load('db.ptcgKey', '');
+  let res;
+  try { res = await fetch(url, { headers: key ? { 'X-Api-Key': key } : {} }); }
+  catch { throw new Error('Couldn’t reach the card database. Check your internet connection and try again.'); }
+  if (res.status === 429) throw new Error('The card database is busy (too many lookups). Wait a minute, or add a free card database key in Settings.');
+  if (!res.ok) throw new Error(`The card database returned an error (${res.status}). Try again in a minute.`);
+  return res.json();
+}
+function slimCard(c) {
+  return {
+    id: c.id, name: c.name, supertype: c.supertype || '', subtypes: c.subtypes || [], types: c.types || [],
+    hp: c.hp || null, evolvesFrom: c.evolvesFrom || null,
+    setCode: (c.set?.ptcgoCode || c.set?.id || '').toUpperCase(), setName: c.set?.name || '', number: c.number || '',
+    regulationMark: c.regulationMark || null,
+    standard: c.legalities?.standard === 'Legal', expanded: c.legalities?.expanded === 'Legal',
+    image: c.images?.small || null, imageLarge: c.images?.large || null,
+    rules: c.rules || [],
+    abilities: (c.abilities || []).map((a) => ({ name: a.name || '', text: a.text || '' })),
+    attacks: (c.attacks || []).map((a) => ({ name: a.name || '', cost: a.cost || [], damage: a.damage || '', text: a.text || '' })),
+  };
+}
+async function getSetMap() {
+  const cached = load('db.sets', null);
+  if (cached && Date.now() - cached.at < 864e5) return cached.map;
+  const d = await tcg('/sets', { pageSize: 250, select: 'id,ptcgoCode' });
+  const map = {};
+  for (const s of d.data) if (s.ptcgoCode) (map[s.ptcgoCode.toUpperCase()] ||= []).push(s.id);
+  save('db.sets', { at: Date.now(), map });
+  return map;
+}
+const esc = (s) => String(s).replace(/["\\]/g, '');
+const ENERGY = { G: 'Grass', R: 'Fire', W: 'Water', L: 'Lightning', P: 'Psychic', F: 'Fighting', D: 'Darkness', M: 'Metal' };
+const normName = (n) => n.replace(/\{([GRWLPFDM])\}/g, (_, s) => ENERGY[s]).replace(/\s+/g, ' ').trim();
+async function findByName(raw) {
+  const name = normName(raw);
+  const tries = [name];
+  if (/^Basic /i.test(name)) tries.push(name.replace(/^Basic /i, ''));
+  else if (/ Energy$/i.test(name)) tries.push('Basic ' + name);
+  for (const n of tries) {
+    const d = await tcg('/cards', { q: `name:"${esc(n)}"`, orderBy: '-set.releaseDate', pageSize: 1 });
+    if (d.data?.[0]) return slimCard(d.data[0]);
+  }
+  return null;
+}
+async function resolveLines(lines) {
+  const setMap = await getSetMap();
+  const cands = lines.map((l) => (l.setCode && l.number ? (setMap[l.setCode.toUpperCase()] || []).map((s) => `${s}-${l.number}`) : []));
+  const found = {};
+  const ids = [...new Set(cands.flat())];
+  for (let i = 0; i < ids.length; i += 25) {
+    const d = await tcg('/cards', { q: ids.slice(i, i + 25).map((id) => `id:"${id}"`).join(' OR '), pageSize: 250 });
+    for (const c of d.data) found[c.id] = slimCard(c);
+  }
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    let card = cands[i].map((id) => found[id]).find(Boolean) || null;
+    if (!card && lines[i].name) card = await findByName(lines[i].name);
+    out.push({ ...lines[i], card });
+  }
+  return out;
+}
+async function searchCards({ q, kind, standard, page }) {
+  const parts = [];
+  if (q) { const s = esc(q); parts.push(s.includes(' ') ? `name:"${s}"` : `name:${s}*`); }
+  if (kind !== 'all') parts.push(`supertype:${kind}`);
+  if (standard) parts.push('legalities.standard:legal');
+  if (!parts.length) return { cards: [], total: 0 };
+  const d = await tcg('/cards', { q: parts.join(' '), orderBy: '-set.releaseDate', pageSize: 36, page });
+  return { cards: d.data.map(slimCard), total: d.totalCount };
+}
+
+/* ---------- Deck rules ---------- */
+const sectionOf = (c) => (c.supertype?.startsWith('Pok') ? 'pokemon' : c.supertype === 'Trainer' ? 'trainer' : 'energy');
+const isBasicEnergy = (c) => c.supertype === 'Energy' && c.subtypes.includes('Basic');
+const TRAINER_ORDER = ['Supporter', 'Item', 'Pokémon Tool', 'Stadium'];
+const tRank = (c) => { const i = TRAINER_ORDER.findIndex((t) => c.subtypes.includes(t)); return i < 0 ? 9 : i; };
+function sortEntries(list) {
+  return [...list].sort((a, b) => {
+    const s = sectionOf(a.card);
+    if (s === 'trainer') return tRank(a.card) - tRank(b.card) || b.count - a.count;
+    if (s === 'energy') return isBasicEnergy(a.card) - isBasicEnergy(b.card) || b.count - a.count;
+    return 0;
+  });
+}
+const printKey = (c) => (sectionOf(c) === 'pokemon' ? `${c.name}|${c.attacks.map((a) => a.name).join(',')}` : c.name);
+function ownedCount(card, coll) {
+  const k = printKey(card); let n = 0;
+  for (const e of Object.values(coll)) if (e.card.id === card.id || printKey(e.card) === k) n += e.count;
+  return n;
+}
+function analyzeDeck(entries, coll, format) {
+  const counts = { pokemon: 0, trainer: 0, energy: 0 }, byName = {}, illegal = [];
+  let missing = 0, ace = 0, radiant = 0;
+  for (const { card, count } of entries) {
+    counts[sectionOf(card)] += count;
+    if (!isBasicEnergy(card)) byName[card.name] = (byName[card.name] || 0) + count;
+    if (card.subtypes.includes('ACE SPEC')) ace += count;
+    if (card.subtypes.includes('Radiant')) radiant += count;
+    if ((format === 'standard' && !card.standard) || (format === 'expanded' && !card.expanded)) illegal.push(card.name);
+    missing += Math.max(0, count - ownedCount(card, coll));
+  }
+  const total = counts.pokemon + counts.trainer + counts.energy, issues = [];
+  const s = (n) => (n === 1 ? '' : 's');
+  if (total !== 60) issues.push(total < 60 ? `Add ${60 - total} more card${s(60 - total)} to reach 60.` : `Remove ${total - 60} card${s(total - 60)} to get down to 60.`);
+  for (const [n, c] of Object.entries(byName)) if (c > 4) issues.push(`${n}: ${c} copies (limit is 4).`);
+  if (total && !entries.some((e) => sectionOf(e.card) === 'pokemon' && e.card.subtypes.includes('Basic'))) issues.push('The deck needs at least one Basic Pokémon.');
+  if (ace > 1) issues.push(`${ace} ACE SPEC cards (limit is 1).`);
+  if (radiant > 1) issues.push(`${radiant} Radiant Pokémon (limit is 1).`);
+  for (const n of new Set(illegal)) issues.push(`${n} isn’t legal in ${format === 'standard' ? 'Standard' : 'Expanded'}.`);
+  return { total, counts, missing, issues };
+}
+
+/* ---------- Decklist text (Limitless / Pokémon TCG Live format) ---------- */
+const HEADER = /^(pok[eé]mon|trainers?|energy|total cards)\s*[:\-]?\s*\d*\s*$/i;
+const FULL = /^(\d+)\s+(.+?)\s+([A-Z][A-Z0-9-]{1,6})\s+([A-Z]{0,3}\d+[a-z]?)$/;
+function parseDecklist(text) {
+  const out = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/^[*•\-]\s*/, '').trim();
+    if (!line || HEADER.test(line)) continue;
+    let m = line.match(FULL);
+    if (m) { out.push({ count: +m[1], name: m[2], setCode: m[3], number: m[4], raw: line }); continue; }
+    m = line.match(/^(\d+)\s+(.+)$/);
+    if (m) out.push({ count: +m[1], name: m[2], setCode: '', number: '', raw: line });
+  }
+  return out;
+}
+function exportDecklist(entries) {
+  const out = [];
+  for (const [sec, label] of [['pokemon', 'Pokémon'], ['trainer', 'Trainer'], ['energy', 'Energy']]) {
+    const list = sortEntries(entries.filter((e) => sectionOf(e.card) === sec));
+    if (!list.length) continue;
+    out.push(`${label}: ${list.reduce((n, e) => n + e.count, 0)}`);
+    for (const e of list) out.push(`${e.count} ${e.card.name} ${e.card.setCode} ${e.card.number}`);
+    out.push('');
+  }
+  out.push(`Total Cards: ${entries.reduce((n, e) => n + e.count, 0)}`);
+  return out.join('\n');
+}
+const collectionText = (coll) => Object.values(coll).sort((a, b) => a.card.name.localeCompare(b.card.name))
+  .map((e) => `${e.count} ${e.card.name} ${e.card.setCode} ${e.card.number}`).join('\n');
+
+/* ---------- Storage: Firebase (shared) or this device only ---------- */
+function createLocalStore() {
+  let decks = load('db.local.decks', {}), coll = load('db.local.collection', {});
+  const subs = [];
+  const emit = () => { save('db.local.decks', decks); save('db.local.collection', coll); subs.forEach((f) => f({ decks: { ...decks }, collection: { ...coll }, loaded: true })); };
+  return {
+    mode: 'local',
+    subscribe(f) { subs.push(f); f({ decks: { ...decks }, collection: { ...coll }, loaded: true }); return () => {}; },
+    saveDeck(d) { decks[d.id] = d; emit(); },
+    deleteDeck(id) { delete decks[id]; emit(); },
+    setOwned(card, count) { if (count <= 0) delete coll[card.id]; else coll[card.id] = { card, count }; emit(); },
+    setOwnedMany(items) { for (const { card, count } of items) { if (count <= 0) delete coll[card.id]; else coll[card.id] = { card, count }; } emit(); },
+    replaceCollection(obj) { coll = { ...obj }; emit(); },
+  };
+}
+
+const FB = 'https://www.gstatic.com/firebasejs/10.14.1/';
+async function createFirebaseStore(code) {
+  const { initializeApp, getApps } = await import(FB + 'firebase-app.js');
+  const fs = await import(FB + 'firebase-firestore.js');
+  const app = getApps()[0] || initializeApp(firebaseConfig);
+  const db = fs.getFirestore(app);
+  const decksCol = fs.collection(db, 'deckbinder', code, 'decks');
+  const collCol = fs.collection(db, 'deckbinder', code, 'collection');
+  try { await fs.getDocs(fs.query(decksCol, fs.limit(1))); }
+  catch (e) {
+    if (e.code === 'permission-denied') throw new Error('That family code didn’t match. Check it against the code in your Firebase rules.');
+    throw new Error('Couldn’t connect to Firebase. Check your internet connection and firebase-config.js.');
+  }
+  const batches = async (ops) => {
+    for (let i = 0; i < ops.length; i += 400) {
+      const b = fs.writeBatch(db);
+      ops.slice(i, i + 400).forEach((op) => op(b));
+      await b.commit();
+    }
+  };
+  return {
+    mode: 'firebase',
+    subscribe(f, onError) {
+      let state = { decks: {}, collection: {}, loaded: false }, gotDecks = false, gotColl = false;
+      const push = () => f({ ...state, loaded: gotDecks && gotColl });
+      const err = () => onError?.('Lost the connection to Firebase. Changes will sync when it’s back.');
+      const u1 = fs.onSnapshot(decksCol, (s) => { const d = {}; s.forEach((x) => (d[x.id] = x.data())); state = { ...state, decks: d }; gotDecks = true; push(); }, err);
+      const u2 = fs.onSnapshot(collCol, (s) => { const c = {}; s.forEach((x) => (c[x.id] = x.data())); state = { ...state, collection: c }; gotColl = true; push(); }, err);
+      return () => { u1(); u2(); };
+    },
+    saveDeck: (d) => fs.setDoc(fs.doc(decksCol, d.id), d),
+    deleteDeck: (id) => fs.deleteDoc(fs.doc(decksCol, id)),
+    setOwned: (card, count) => (count <= 0 ? fs.deleteDoc(fs.doc(collCol, card.id)) : fs.setDoc(fs.doc(collCol, card.id), { card, count })),
+    setOwnedMany: (items) => batches(items.map(({ card, count }) => (b) => (count <= 0 ? b.delete(fs.doc(collCol, card.id)) : b.set(fs.doc(collCol, card.id), { card, count })))),
+    async replaceCollection(obj) {
+      const existing = await fs.getDocs(collCol);
+      const ops = [];
+      existing.forEach((x) => { if (!obj[x.id]) ops.push((b) => b.delete(x.ref)); });
+      for (const [id, v] of Object.entries(obj)) ops.push((b) => b.set(fs.doc(collCol, id), v));
+      await batches(ops);
+    },
+  };
+}
+
+/* ---------- Deck coach (Claude API, called from this browser) ---------- */
+const SYSTEM = `You are a friendly, expert Pokémon TCG deck-building coach helping a parent and their kid build 60-card decks.
+
+How you help:
+- Work from the current deck and the cards they own (both given in each message). Prefer cards they already own; when you suggest something they don't own, say so plainly.
+- When they paste or mention a list from Limitless or another site, compare it with their collection, point out what's missing, and suggest realistic substitutes from what they own, explaining the trade-off.
+- Respect the rules: exactly 60 cards, at most 4 copies of any card by name (basic Energy is unlimited), at least one Basic Pokémon, at most 1 ACE SPEC and 1 Radiant Pokémon. Use the format given in the message.
+- Explain the "why" simply enough for a kid to follow: what the deck is trying to do, how the pieces fit together, and how a change affects consistency.
+- Never invent cards. If you aren't sure a card exists or what its set code is, leave setCode and number empty and say you're unsure. Newer cards may be beyond what you know; if a card in their deck or collection is unfamiliar, reason from its name and ask about its text rather than guessing.
+
+Always answer through the deck_advice tool. Keep "reply" conversational and fairly short: short paragraphs, and "- " lines for lists. Put every concrete card change in "suggestions" using Pokémon TCG Live set codes (e.g. TWM, SFA, PAF) and collector numbers. Use an empty list when there's nothing to change.`;
+
+const TOOL = {
+  name: 'deck_advice',
+  description: 'Your reply to the user, plus any concrete card changes you recommend.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      reply: { type: 'string' },
+      suggestions: { type: 'array', items: { type: 'object', properties: {
+        action: { type: 'string', enum: ['add', 'remove'] }, name: { type: 'string' },
+        setCode: { type: 'string', description: 'PTCGL set code, or empty if unsure.' },
+        number: { type: 'string', description: 'Collector number, or empty if unsure.' },
+        count: { type: 'integer', minimum: 1, maximum: 60 }, reason: { type: 'string', description: 'One short sentence on why.' },
+      }, required: ['action', 'name', 'count', 'reason'] } },
+    },
+    required: ['reply', 'suggestions'],
+  },
+};
+
+async function askCoach({ history, message, deck, collection, format }) {
+  const key = load('db.claudeKey', '');
+  if (!key) throw new Error('Add your Claude API key in Settings to use the coach.');
+  const context = `<format>${format}</format>\n<current_deck name="${deck.name}">\n${exportDecklist(deck.entries) || '(empty)'}\n</current_deck>\n<cards_we_own>\n${collectionText(collection) || '(nothing recorded yet)'}\n</cards_we_own>\n\n${message}`;
+  let res;
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: load('db.model', DEFAULT_MODEL) || DEFAULT_MODEL, max_tokens: 2500, system: SYSTEM,
+        tools: [TOOL], tool_choice: { type: 'tool', name: 'deck_advice' },
+        messages: [...history.slice(-12), { role: 'user', content: context }],
+      }),
+    });
+  } catch { throw new Error('Couldn’t reach Claude. Check your internet connection and try again.'); }
+  const d = await res.json().catch(() => ({}));
+  if (res.status === 401) throw new Error('Claude rejected the API key. Check it in Settings.');
+  if (res.status === 429) throw new Error('Claude is rate-limiting requests right now. Wait a minute and try again.');
+  if (!res.ok) throw new Error(d.error?.message || `Claude returned an error (${res.status}).`);
+  const block = d.content?.find((b) => b.type === 'tool_use');
+  if (!block) throw new Error('The coach returned an empty answer. Try asking again.');
+  return { reply: block.input.reply || '', suggestions: block.input.suggestions || [] };
+}
+
+/* ---------- Small components ---------- */
+function ownState(count, owned) { return owned >= count ? 'have' : owned > 0 ? 'short' : 'need'; }
+
+function CardTile({ card, count, owned, onOpen, children }) {
+  const st = count != null && owned != null ? ownState(count, owned) : null;
+  return html`<div class="tile">
+    <button class="pocket" onClick=${() => onOpen?.(card)} aria-label=${`${card.name}, ${card.setCode} ${card.number}`}>
+      ${card.image ? html`<img src=${card.image} alt="" loading="lazy" />` : html`<span class="noimg">${card.name}</span>`}
+      ${count != null && html`<span class="qty">${count}</span>`}
+      ${st && html`<span class=${`own own-${st}`} title=${`We own ${owned} of ${count}`}>${st === 'have' ? 'Owned' : `Need ${count - owned}`}</span>`}
+    </button>
+    ${children && html`<div class="tile-actions">${children}</div>`}
+  </div>`;
+}
+
+function Stepper({ label, value, onChange, max = 99 }) {
+  return html`<div class="stepper" role="group" aria-label=${label}>
+    <span class="stepper-label">${label}</span>
+    <button onClick=${() => onChange(Math.max(0, value - 1))} aria-label=${`Fewer: ${label}`}>−</button>
+    <span class="stepper-val">${value}</span>
+    <button onClick=${() => onChange(Math.min(max, value + 1))} aria-label=${`More: ${label}`}>+</button>
+  </div>`;
+}
+
+function useEscape(onClose) {
+  useEffect(() => { const k = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
+}
+
+function CardModal({ card, deckCount, ownedExact, onDeck, onOwned, onClose }) {
+  useEscape(onClose);
+  return html`<div class="scrim" onClick=${onClose}>
+    <div class="modal" role="dialog" aria-modal="true" aria-label=${card.name} onClick=${(e) => e.stopPropagation()}>
+      <img class="modal-img" src=${card.imageLarge || card.image} alt=${card.name} />
+      <div class="modal-body">
+        <h2>${card.name}</h2>
+        <p class="muted">${card.setName} (${card.setCode} ${card.number})${card.regulationMark ? `, mark ${card.regulationMark}` : ''}</p>
+        <p class=${card.standard ? 'legal ok' : 'legal no'}>${card.standard ? 'Legal in Standard' : 'Not legal in Standard'}</p>
+        ${card.abilities.map((a) => html`<div class="cardtext"><strong>Ability: ${a.name}</strong><p>${a.text}</p></div>`)}
+        ${card.attacks.map((a) => html`<div class="cardtext"><strong>${a.name}${a.damage ? ` ${a.damage}` : ''}</strong>${a.text && html`<p>${a.text}</p>`}</div>`)}
+        ${sectionOf(card) !== 'pokemon' && card.rules.map((r) => html`<p class="cardtext">${r}</p>`)}
+        <div class="modal-controls">
+          <${Stepper} label="In this deck" value=${deckCount} onChange=${onDeck} max=${60} />
+          <${Stepper} label="We own (this print)" value=${ownedExact} onChange=${onOwned} />
+        </div>
+        <button class="btn ghost" onClick=${onClose}>Close</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function ImportBox({ title, hint, actions, onDone }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  async function run(mode) {
+    const lines = parseDecklist(text);
+    if (!lines.length) return setMsg({ bad: true, text: 'No card lines found. Each line should look like “4 Dreepy TWM 128”.' });
+    setBusy(true); setMsg(null);
+    try {
+      const results = await resolveLines(lines);
+      const ok = results.filter((x) => x.card), failed = results.filter((x) => !x.card).map((x) => x.raw);
+      await onDone(ok.map((x) => ({ card: x.card, count: x.count })), mode);
+      setMsg({ bad: failed.length > 0, text: failed.length ? `Imported ${ok.length} lines. Couldn’t find: ${failed.join('; ')}` : `Imported ${ok.length} lines.` });
+      if (!failed.length) setText('');
+    } catch (e) { setMsg({ bad: true, text: e.message || 'Import failed.' }); }
+    finally { setBusy(false); }
+  }
+  return html`<div class="import">
+    <h3>${title}</h3>
+    <p class="muted small">${hint}</p>
+    <textarea rows="7" value=${text} onInput=${(e) => setText(e.target.value)} placeholder=${'Pokémon: 12\n4 Dreepy TWM 128\n...'} aria-label=${title}></textarea>
+    <div class="row">${actions.map((a) => html`<button class=${`btn ${a.primary ? '' : 'ghost'}`} disabled=${busy || !text.trim()} onClick=${() => run(a.mode)}>${busy ? 'Looking up cards…' : a.label}</button>`)}</div>
+    ${msg && html`<p class=${`small ${msg.bad ? 'warn' : 'muted'}`}>${msg.text}</p>`}
+  </div>`;
+}
+
+/* ---------- Deck tab ---------- */
+function DeckView({ deck, collection, stats, onOpen, onImport }) {
+  const [copied, setCopied] = useState(false);
+  const [showImport, setShowImport] = useState(deck.entries.length === 0);
+  async function copy() {
+    try { await navigator.clipboard.writeText(exportDecklist(deck.entries)); setCopied(true); setTimeout(() => setCopied(false), 1800); }
+    catch { alert(exportDecklist(deck.entries)); }
+  }
+  const s = (n) => (n === 1 ? '' : 's');
+  return html`<section class="deck">
+    <div class="statbar">
+      <div class=${`count60 ${stats.total === 60 ? 'done' : ''}`}><b>${stats.total}</b><span>/ 60</span></div>
+      <div class="split">
+        <span class="sec-pokemon">${stats.counts.pokemon} Pokémon</span>
+        <span class="sec-trainer">${stats.counts.trainer} Trainers</span>
+        <span class="sec-energy">${stats.counts.energy} Energy</span>
+      </div>
+      <div class=${`missing ${stats.missing ? '' : 'none'}`}>${stats.total === 0 ? 'Empty deck' : stats.missing ? `${stats.missing} card${s(stats.missing)} we don’t own` : 'We own every card'}</div>
+      <div class="row end">
+        <button class="btn ghost" onClick=${() => setShowImport(!showImport)}>${showImport ? 'Hide import' : 'Import list'}</button>
+        <button class="btn ghost" onClick=${copy} disabled=${!deck.entries.length}>${copied ? 'Copied' : 'Copy list'}</button>
+      </div>
+    </div>
+    ${stats.issues.length > 0 && stats.total > 0 && html`<ul class="issues">${stats.issues.map((i) => html`<li>${i}</li>`)}</ul>`}
+    ${showImport && html`<${ImportBox} title="Import a decklist"
+      hint="Paste a list exported from Limitless, Pokémon TCG Live, or a chat. The badges will show which cards you already own."
+      actions=${[{ mode: 'replace', label: 'Replace this deck', primary: true }, { mode: 'add', label: 'Add to this deck' }]}
+      onDone=${onImport} />`}
+    ${deck.entries.length === 0
+      ? html`<p class="empty">Import a list above, find cards to add, or ask the coach to start a deck from cards you own.</p>`
+      : [['pokemon', 'Pokémon'], ['trainer', 'Trainers'], ['energy', 'Energy']].map(([key, label]) => {
+          const list = sortEntries(deck.entries.filter((e) => sectionOf(e.card) === key));
+          if (!list.length) return null;
+          return html`<div class=${`binder sec-${key}`}>
+            <h3>${label} <span>${list.reduce((n, e) => n + e.count, 0)}</span></h3>
+            <div class="grid">${list.map((e) => html`<${CardTile} key=${e.card.id} card=${e.card} count=${e.count} owned=${ownedCount(e.card, collection)} onOpen=${onOpen} />`)}</div>
+          </div>`;
+        })}
+  </section>`;
+}
+
+/* ---------- Find cards tab ---------- */
+function SearchView({ onOpen, onAddDeck, onAddOwned, ownedOf, deckCountOf }) {
+  const [q, setQ] = useState(''), [kind, setKind] = useState('all'), [standard, setStandard] = useState(true);
+  const [st, setSt] = useState({ cards: [], total: 0, page: 1, busy: false, error: null, searched: false });
+  async function search(page = 1) {
+    setSt((s) => ({ ...s, busy: true, error: null }));
+    try {
+      const d = await searchCards({ q: q.trim(), kind, standard, page });
+      setSt((s) => ({ cards: page === 1 ? d.cards : [...s.cards, ...d.cards], total: d.total, page, busy: false, error: null, searched: true }));
+    } catch (e) { setSt((s) => ({ ...s, busy: false, error: e.message })); }
+  }
+  return html`<section class="search">
+    <form class="searchbar" onSubmit=${(e) => { e.preventDefault(); search(1); }}>
+      <input value=${q} onInput=${(e) => setQ(e.target.value)} placeholder="Card name, like Dragapult or Iono" aria-label="Card name" />
+      <select value=${kind} onChange=${(e) => setKind(e.target.value)} aria-label="Card type">
+        <option value="all">All cards</option><option value="pokemon">Pokémon</option><option value="trainer">Trainers</option><option value="energy">Energy</option>
+      </select>
+      <label class="check"><input type="checkbox" checked=${standard} onChange=${(e) => setStandard(e.target.checked)} /> Standard only</label>
+      <button class="btn" disabled=${st.busy}>${st.busy ? 'Searching…' : 'Search'}</button>
+    </form>
+    ${st.error && html`<p class="warn">${st.error}</p>`}
+    ${st.searched && !st.cards.length && !st.busy && html`<p class="empty">No cards match. Check the spelling, or turn off “Standard only”.</p>`}
+    <div class="grid wide">${st.cards.map((c) => html`<${CardTile} key=${c.id} card=${c} onOpen=${onOpen}>
+      <button class="mini" onClick=${() => onAddDeck(c)}>+ Deck${deckCountOf(c) ? ` (${deckCountOf(c)})` : ''}</button>
+      <button class="mini ghost" onClick=${() => onAddOwned(c)}>+ Own${ownedOf(c) ? ` (${ownedOf(c)})` : ''}</button>
+    <//>`)}</div>
+    ${st.cards.length < st.total && html`<button class="btn ghost more" onClick=${() => search(st.page + 1)} disabled=${st.busy}>Show more (${st.total - st.cards.length} left)</button>`}
+  </section>`;
+}
+
+/* ---------- Our cards tab ---------- */
+function CollectionView({ collection, store, onOpen }) {
+  const [filter, setFilter] = useState(''), [kind, setKind] = useState('all');
+  const fileRef = useRef(null);
+  const items = useMemo(() => Object.values(collection)
+    .filter((e) => (kind === 'all' || sectionOf(e.card) === kind) && e.card.name.toLowerCase().includes(filter.toLowerCase()))
+    .sort((a, b) => a.card.name.localeCompare(b.card.name)), [collection, filter, kind]);
+  const total = Object.values(collection).reduce((n, e) => n + e.count, 0);
+
+  const importItems = (list) => {
+    const add = {};
+    for (const { card, count } of list) add[card.id] = { card, count: (add[card.id]?.count ?? collection[card.id]?.count ?? 0) + count };
+    return store.setOwnedMany(Object.values(add));
+  };
+  function backup() {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(collection)], { type: 'application/json' }));
+    a.download = `deck-binder-collection-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+  }
+  function restore(file) {
+    const r = new FileReader();
+    r.onload = async () => {
+      try {
+        const obj = JSON.parse(r.result);
+        if (!confirm(`Replace the shared collection with the ${Object.keys(obj).length} cards in this backup?`)) return;
+        await store.replaceCollection(obj);
+      } catch { alert('That file isn’t a Deck Binder backup.'); }
+    };
+    r.readAsText(file);
+  }
+  return html`<section class="collection">
+    <div class="statbar">
+      <div class="count60"><b>${total}</b><span>cards we own</span></div>
+      <div class="row end">
+        <button class="btn ghost" onClick=${backup} disabled=${!total}>Save backup</button>
+        <button class="btn ghost" onClick=${() => fileRef.current.click()}>Load backup</button>
+        <input ref=${fileRef} type="file" accept="application/json" hidden onChange=${(e) => { e.target.files[0] && restore(e.target.files[0]); e.target.value = ''; }} />
+      </div>
+    </div>
+    <${ImportBox} title="Add cards we own"
+      hint="Paste a list in the same format as a decklist (count, name, set code, number). Use Find cards to add one at a time."
+      actions=${[{ mode: 'add', label: 'Add to our cards', primary: true }]} onDone=${importItems} />
+    <div class="searchbar">
+      <input value=${filter} onInput=${(e) => setFilter(e.target.value)} placeholder="Filter by name" aria-label="Filter by name" />
+      <select value=${kind} onChange=${(e) => setKind(e.target.value)} aria-label="Card type">
+        <option value="all">All cards</option><option value="pokemon">Pokémon</option><option value="trainer">Trainers</option><option value="energy">Energy</option>
+      </select>
+    </div>
+    ${!items.length
+      ? html`<p class="empty">${total ? 'No owned cards match that filter.' : 'Nothing here yet. Paste a list above or add cards from Find cards.'}</p>`
+      : html`<div class="grid wide">${items.map((e) => html`<${CardTile} key=${e.card.id} card=${e.card} count=${e.count} onOpen=${onOpen} />`)}</div>`}
+  </section>`;
+}
+
+/* ---------- Deck coach ---------- */
+const STARTERS = [
+  'Which cards in this deck are we missing, and what can we use from our collection instead?',
+  'Explain how this deck wins, in a way a kid can follow.',
+  'Build a 60-card deck around a Pokémon we own. Ask me which one first.',
+];
+function AssistantPanel({ deck, collection, format, onAdd, onRemove, onOpen, onSettings }) {
+  const [messages, setMessages] = useState([]), [input, setInput] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(null);
+  const endRef = useRef(null);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [messages, busy]);
+  const hasKey = !!load('db.claudeKey', '');
+
+  async function send(text) {
+    if (!text.trim() || busy) return;
+    const history = messages.map((m) => ({ role: m.role, content: m.text }));
+    setMessages((m) => [...m, { role: 'user', text }]); setInput(''); setBusy(true); setError(null);
+    try {
+      const d = await askCoach({ history, message: text, deck, collection, format });
+      let suggestions = d.suggestions;
+      if (suggestions.length) {
+        let res = [];
+        try { res = await resolveLines(suggestions.map((s) => ({ name: s.name, setCode: s.setCode || '', number: s.number || '', count: s.count }))); } catch {}
+        suggestions = suggestions.map((s, i) => ({ ...s, card: res[i]?.card || null, done: false }));
+      }
+      setMessages((m) => [...m, { role: 'assistant', text: d.reply, suggestions }]);
+    } catch (e) { setError(e.message); setMessages((m) => m.slice(0, -1)); setInput(text); }
+    finally { setBusy(false); }
+  }
+  function apply(mi, si) {
+    const s = messages[mi].suggestions[si];
+    if (!s.card) return;
+    s.action === 'remove' ? onRemove(s.card, s.count) : onAdd(s.card, s.count);
+    setMessages((m) => m.map((msg, i) => (i !== mi ? msg : { ...msg, suggestions: msg.suggestions.map((x, j) => (j === si ? { ...x, done: true } : x)) })));
+  }
+  return html`<aside class="assistant">
+    <header><h2>Deck coach</h2>${messages.length > 0 && html`<button class="btn ghost small" onClick=${() => setMessages([])}>New chat</button>`}</header>
+    <div class="thread" aria-live="polite">
+      ${!hasKey && html`<div class="starters"><p class="muted">The coach needs a Claude API key on this device.</p><button class="btn" onClick=${onSettings}>Add API key</button></div>`}
+      ${hasKey && messages.length === 0 && html`<div class="starters">
+        <p class="muted">Ask about “${deck.name}”. The coach sees this deck and the cards you own.</p>
+        ${STARTERS.map((s) => html`<button class="starter" onClick=${() => send(s)}>${s}</button>`)}
+      </div>`}
+      ${messages.map((m, mi) => html`<div class=${`msg ${m.role}`}>
+        <p>${m.text}</p>
+        ${m.suggestions?.length > 0 && html`<div class="suggest">${m.suggestions.map((s, si) => html`<div class=${`sugg ${s.action}`}>
+          ${s.card ? html`<${CardTile} card=${s.card} onOpen=${onOpen} />` : html`<div class="ghosted">${s.name}</div>`}
+          <div class="sugg-body">
+            <strong>${s.action === 'remove' ? '−' : '+'}${s.count} ${s.name}</strong>
+            <span class="small">${s.reason}</span>
+            ${s.card && s.action === 'add' && html`<span class="small muted">We own ${ownedCount(s.card, collection)}</span>`}
+            ${s.card
+              ? html`<button class="mini" disabled=${s.done} onClick=${() => apply(mi, si)}>${s.done ? (s.action === 'remove' ? 'Removed' : 'Added') : s.action === 'remove' ? 'Remove from deck' : 'Add to deck'}</button>`
+              : html`<span class="small warn">Couldn’t find this card. Try Find cards.</span>`}
+          </div>
+        </div>`)}</div>`}
+      </div>`)}
+      ${busy && html`<div class="msg assistant thinking">Thinking it over…</div>`}
+      ${error && html`<p class="warn small">${error}</p>`}
+      <div ref=${endRef}></div>
+    </div>
+    <form class="composer" onSubmit=${(e) => { e.preventDefault(); send(input); }}>
+      <textarea rows="3" value=${input} disabled=${!hasKey} placeholder="Ask, or paste a list from Limitless…" aria-label="Message the deck coach"
+        onInput=${(e) => setInput(e.target.value)}
+        onKeyDown=${(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}></textarea>
+      <button class="btn" disabled=${busy || !input.trim() || !hasKey}>Send</button>
+    </form>
+  </aside>`;
+}
+
+/* ---------- Settings and family code ---------- */
+function Settings({ mode, onClose, onDisconnect }) {
+  const [key, setKey] = useState(load('db.claudeKey', '')), [show, setShow] = useState(false);
+  const [model, setModel] = useState(load('db.model', DEFAULT_MODEL));
+  const [ptcg, setPtcg] = useState(load('db.ptcgKey', ''));
+  useEscape(onClose);
+  function done() { save('db.claudeKey', key.trim()); save('db.model', model.trim() || DEFAULT_MODEL); save('db.ptcgKey', ptcg.trim()); onClose(); }
+  return html`<div class="scrim" onClick=${onClose}>
+    <div class="modal settings" role="dialog" aria-modal="true" aria-label="Settings" onClick=${(e) => e.stopPropagation()}>
+      <h2>Settings</h2>
+      <p class="muted small">These are saved on this device only.</p>
+      <label for="ck">Claude API key</label>
+      <div class="pw"><input id="ck" type=${show ? 'text' : 'password'} value=${key} onInput=${(e) => setKey(e.target.value)} autocomplete="off" placeholder="sk-ant-…" />
+        <button class="btn ghost small" onClick=${() => setShow(!show)}>${show ? 'Hide' : 'Show'}</button></div>
+      <p class="muted small">Create one at console.anthropic.com. Set a monthly spend limit there too.</p>
+      <label for="cm">Claude model</label>
+      <input id="cm" value=${model} onInput=${(e) => setModel(e.target.value)} />
+      <label for="pk">Card database key (optional)</label>
+      <input id="pk" value=${ptcg} onInput=${(e) => setPtcg(e.target.value)} autocomplete="off" placeholder="From dev.pokemontcg.io" />
+      <p class="muted small">Free. Raises the card lookup limit from 1,000 to 20,000 a day.</p>
+      <p class="small" style="margin-top:16px">${mode === 'firebase' ? html`<b>Shared with Firebase.</b> Decks and cards sync across your devices.` : 'Saved on this device only. Fill in firebase-config.js to share across devices.'}</p>
+      <div class="row" style="margin-top:16px">
+        <button class="btn" onClick=${done}>Save settings</button>
+        <button class="btn ghost" onClick=${onClose}>Cancel</button>
+        ${mode === 'firebase' && html`<button class="btn ghost danger" onClick=${onDisconnect}>Forget family code</button>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+function Connect({ onConnect, error, busy }) {
+  const [code, setCode] = useState(''), [show, setShow] = useState(false);
+  return html`<form class="connect" onSubmit=${(e) => { e.preventDefault(); code.trim() && onConnect(code.trim().toLowerCase()); }}>
+    <h1>Deck Binder</h1>
+    <p class="muted">Enter your family code to open your shared decks and cards.</p>
+    <label for="fc">Family code</label>
+    <div class="pw"><input id="fc" type=${show ? 'text' : 'password'} value=${code} onInput=${(e) => setCode(e.target.value)} autocapitalize="off" autocomplete="off" spellcheck="false" />
+      <button type="button" class="btn ghost small" onClick=${() => setShow(!show)}>${show ? 'Hide' : 'Show'}</button></div>
+    ${error && html`<p class="warn small">${error}</p>`}
+    <div class="row" style="margin-top:16px"><button class="btn" disabled=${busy || !code.trim()}>${busy ? 'Connecting…' : 'Open our binder'}</button></div>
+  </form>`;
+}
+
+/* ---------- App ---------- */
+const blankDeck = (name) => ({ id: makeId(), name, entries: [], createdAt: Date.now(), updatedAt: Date.now() });
+
+function App() {
+  const [code, setCode] = usePref('db.familyCode', '');
+  const [store, setStore] = useState(null);
+  const [connErr, setConnErr] = useState(null), [connecting, setConnecting] = useState(false);
+  const [data, setData] = useState({ decks: {}, collection: {}, loaded: false });
+  const [syncErr, setSyncErr] = useState(null);
+  const [activeId, setActiveId] = usePref('db.active', null);
+  const [format, setFormat] = usePref('db.format', 'standard');
+  const [tab, setTab] = useState('deck');
+  const [modalCard, setModalCard] = useState(null);
+  const [settings, setSettings] = useState(false);
+  const [nameDraft, setNameDraft] = useState(null);
+
+  // Connect to Firebase (or fall back to this device only).
+  useEffect(() => {
+    if (!FIREBASE_READY) { setStore(createLocalStore()); return; }
+    if (!code) return;
+    let cancelled = false;
+    setConnecting(true); setConnErr(null);
+    createFirebaseStore(code)
+      .then((s) => { if (!cancelled) setStore(s); })
+      .catch((e) => { if (!cancelled) { setConnErr(e.message); setCode(''); } })
+      .finally(() => !cancelled && setConnecting(false));
+    return () => { cancelled = true; };
+  }, [code]);
+
+  useEffect(() => { if (!store) return; return store.subscribe((d) => { setData(d); setSyncErr(null); }, setSyncErr); }, [store]);
+
+  const decks = useMemo(() => Object.values(data.decks).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)), [data.decks]);
+
+  // Make a first deck once everything has loaded and there are none.
+  useEffect(() => { if (store && data.loaded && decks.length === 0) store.saveDeck(blankDeck('My first deck')); }, [store, data.loaded, decks.length]);
+
+  if (FIREBASE_READY && !store) return html`<${Connect} onConnect=${setCode} error=${connErr} busy=${connecting} />`;
+  if (!data.loaded || !decks.length) return html`<div class="loading">Opening the binder…</div>`;
+
+  const collection = data.collection;
+  const deck = decks.find((d) => d.id === activeId) || decks[0];
+  const stats = analyzeDeck(deck.entries, collection, format);
+  const writeDeck = (d) => store.saveDeck({ ...d, updatedAt: Date.now() });
+
+  const deckCountOf = (card) => deck.entries.find((e) => e.card.id === card.id)?.count || 0;
+  const setDeckCount = (card, count) => {
+    const exists = deck.entries.some((e) => e.card.id === card.id);
+    const entries = exists ? deck.entries.map((e) => (e.card.id === card.id ? { ...e, count } : e)) : [...deck.entries, { card, count }];
+    writeDeck({ ...deck, entries: entries.filter((e) => e.count > 0) });
+  };
+  const addToDeck = (card, n = 1) => setDeckCount(card, deckCountOf(card) + n);
+  const removeFromDeck = (card, n = 1) => {
+    const e = deck.entries.find((x) => x.card.id === card.id) || deck.entries.find((x) => x.card.name === card.name);
+    if (e) setDeckCount(e.card, Math.max(0, e.count - n));
+  };
+  const importToDeck = (items, mode) => {
+    const map = new Map(mode === 'replace' ? [] : deck.entries.map((e) => [e.card.id, { ...e }]));
+    for (const { card, count } of items) map.set(card.id, { card, count: (map.get(card.id)?.count || 0) + count });
+    return writeDeck({ ...deck, entries: [...map.values()] });
+  };
+  const ownedExact = (card) => collection[card.id]?.count || 0;
+
+  function newDeck() { const d = blankDeck(`Deck ${decks.length + 1}`); store.saveDeck(d); setActiveId(d.id); setTab('deck'); }
+  function deleteDeck() {
+    if (!confirm(`Delete “${deck.name}” for everyone? This can’t be undone.`)) return;
+    store.deleteDeck(deck.id); setActiveId(decks.find((d) => d.id !== deck.id)?.id || null);
+  }
+  function commitName() {
+    if (nameDraft != null && nameDraft.trim() && nameDraft.trim() !== deck.name) writeDeck({ ...deck, name: nameDraft.trim() });
+    setNameDraft(null);
+  }
+
+  return html`<div class="app">
+    <header class="top">
+      <div class="brand">Deck Binder</div>
+      <div class="deckpick">
+        <select value=${deck.id} onChange=${(e) => setActiveId(e.target.value)} aria-label="Choose a deck">
+          ${decks.map((d) => html`<option value=${d.id}>${d.name}</option>`)}
+        </select>
+        <input value=${nameDraft ?? deck.name} onInput=${(e) => setNameDraft(e.target.value)} onBlur=${commitName}
+          onKeyDown=${(e) => e.key === 'Enter' && e.target.blur()} aria-label="Deck name" />
+        <button class="btn ghost small" onClick=${newDeck}>New deck</button>
+        <button class="btn ghost small danger" onClick=${deleteDeck}>Delete</button>
+      </div>
+      <select class="format" value=${format} onChange=${(e) => setFormat(e.target.value)} aria-label="Format">
+        <option value="standard">Standard</option><option value="expanded">Expanded</option>
+      </select>
+      <button class="btn ghost small gear" onClick=${() => setSettings(true)}>Settings</button>
+    </header>
+    ${syncErr && html`<p class="warn small">${syncErr}</p>`}
+
+    <nav class="tabs" role="tablist">
+      ${[['deck', 'Deck'], ['search', 'Find cards'], ['collection', 'Our cards']].map(([k, label]) =>
+        html`<button role="tab" aria-selected=${tab === k} class=${tab === k ? 'on' : ''} onClick=${() => setTab(k)}>${label}</button>`)}
+    </nav>
+
+    <div class="layout">
+      <main>
+        ${tab === 'deck' && html`<${DeckView} key=${deck.id} deck=${deck} collection=${collection} stats=${stats} onOpen=${setModalCard} onImport=${importToDeck} />`}
+        ${tab === 'search' && html`<${SearchView} onOpen=${setModalCard} onAddDeck=${(c) => addToDeck(c)} onAddOwned=${(c) => store.setOwned(c, ownedExact(c) + 1)} ownedOf=${ownedExact} deckCountOf=${deckCountOf} />`}
+        ${tab === 'collection' && html`<${CollectionView} collection=${collection} store=${store} onOpen=${setModalCard} />`}
+      </main>
+      <${AssistantPanel} key=${deck.id} deck=${deck} collection=${collection} format=${format}
+        onAdd=${addToDeck} onRemove=${removeFromDeck} onOpen=${setModalCard} onSettings=${() => setSettings(true)} />
+    </div>
+
+    <p class="foot">Version ${VERSION}. ${store.mode === 'firebase' ? 'Shared with Firebase.' : 'Saved on this device only.'}</p>
+
+    ${modalCard && html`<${CardModal} card=${modalCard} deckCount=${deckCountOf(modalCard)} ownedExact=${ownedExact(modalCard)}
+      onDeck=${(n) => setDeckCount(modalCard, n)} onOwned=${(n) => store.setOwned(modalCard, n)} onClose=${() => setModalCard(null)} />`}
+    ${settings && html`<${Settings} mode=${store.mode} onClose=${() => setSettings(false)}
+      onDisconnect=${() => { setSettings(false); setStore(null); setData({ decks: {}, collection: {}, loaded: false }); setCode(''); }} />`}
+  </div>`;
+}
+
+render(html`<${App} />`, document.getElementById('app'));
+</script>
+</body>
+</html>

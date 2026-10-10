@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Your family code, in lowercase, between the quotes:
+    function familyCode() { return 'change-me'; }
+
+    match /deckbinder/{code}/{document=**} {
+      allow read, write: if code == familyCode();
+    }
+  }
+}
