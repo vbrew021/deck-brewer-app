@@ -223,7 +223,8 @@ textarea { width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-
 .sources a { color: var(--trainer); }
 .search-chips { margin-top: 6px; max-width: 100%; overflow-x: auto; }
 .composer { flex-wrap: wrap; }
-.webtoggle { order: 3; width: 100%; font-size: 13px; color: var(--muted); }
+.webtoggle { order: 3; width: 100%; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.webtoggle select { background: var(--field); border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 3px 6px; font-size: 13px; color: var(--ink); }
 .filters { margin-bottom: 14px; }
 .filters .searchbar { margin-bottom: 8px; }
 .filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 12px; background: var(--paper); border-radius: var(--r-md); padding: 12px 14px; }
@@ -359,7 +360,7 @@ a.btn.disabled { opacity: .5; pointer-events: none; }
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.11.0';
+const VERSION = '1.11.2';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -367,7 +368,20 @@ const COACH_READY = FIREBASE_READY && filled(cfg.recaptchaSiteKey);
 const GEMINI_MODEL = filled(cfg.geminiModel) ? cfg.geminiModel.trim() : 'gemini-3.5-flash-lite';
 // If a model is out of free requests (or retired), the coach moves down this list.
 // Flash-Lite models have a much bigger free allowance (about 500 a day) than standard Flash (about 20).
-const COACH_MODELS = [...new Set([GEMINI_MODEL, 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'])];
+const COACH_MODELS = [...new Set([GEMINI_MODEL, 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite'])];
+// Google's free tier only includes Google Search on the 2.5 models (about 500 searches a day), so web questions use these.
+const WEB_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+
+// Free limits are per model and reset at midnight Pacific time. This device remembers which models
+// are used up today (so it doesn't waste attempts) and counts its own requests for Settings.
+const pacificDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+function usageToday() { const u = load('db.usage', null); return u && u.day === pacificDay() ? u : { day: pacificDay(), total: 0, models: {}, out: {} }; }
+function noteUsage(model) { const u = usageToday(); u.total++; u.models[model] = (u.models[model] || 0) + 1; save('db.usage', u); }
+function markOut(model, limit) { const u = usageToday(); u.out[model] = limit || 0; save('db.usage', u); }
+const isOut = (model) => model in usageToday().out;
+// Google's "too many requests" errors include the actual limit (quotaValue).
+const quotaLimitOf = (e) => { const m = `${e?.message || ''} ${JSON.stringify(e?.customErrorData || '')}`.match(/quota_?value\\?["'\s:=]+\\?"?(\d+)/i); return m ? Number(m[1]) : null; };
+const noThinking = new Set(); // models that don't accept thinking settings
 
 /* ---------- Per-device settings ---------- */
 const load = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
@@ -894,10 +908,11 @@ Don't repeat yourself:
 
 Coach notes and memory:
 - "Coach notes" in each message are lasting family preferences. Follow them in every answer.
+- Web lookups: if the message doesn't say web search is available and a good answer needs current information you don't have (current tournament results or popular decklists, cards or sets newer than you know, prices, or a web page they linked), set "needsWeb" to true and keep "reply" to one short sentence saying you'll look it up. Otherwise set "needsWeb" to false and answer from what you know.
 - If the family states a new lasting preference (age or reading level, play style, favorite types or Pokémon, budget, house rules, cards they won't use), put one short sentence in "remember", written as a note, e.g. "He loves Fire-type Pokémon." Leave "remember" empty otherwise, and never repeat something already in the notes.
 - "Our other decks" lists their other decks. You can mention them when helpful (for example, a card already used in another deck).
 
-Always answer with only a JSON object: {"reply": string, "suggestions": [{"action": "add" | "remove", "name": string, "setCode": string, "number": string, "count": number, "reason": string, "group": string}], "remember": string}. Keep "reply" conversational and short (usually under 200 words): short paragraphs, and "- " lines for lists. Use Pokémon TCG Live set codes (e.g. TWM, SFA, PAF) and collector numbers in "suggestions". Use an empty list only when you're not recommending any specific cards.`;
+Always answer with only a JSON object: {"reply": string, "suggestions": [{"action": "add" | "remove", "name": string, "setCode": string, "number": string, "count": number, "reason": string, "group": string}], "remember": string, "needsWeb": boolean}. Keep "reply" conversational and short (usually under 200 words): short paragraphs, and "- " lines for lists. Use Pokémon TCG Live set codes (e.g. TWM, SFA, PAF) and collector numbers in "suggestions". Use an empty list only when you're not recommending any specific cards.`;
 
 // Two versions of the coach model: one with light "thinking" (faster, leaves room for the answer),
 // and a plain one in case the configured model doesn't accept thinking settings.
@@ -917,7 +932,8 @@ function getCoachModel(light = true, modelName = GEMINI_MODEL, web = false) {
         optionalProperties: ['setCode', 'number', 'group'],
       }) }),
       remember: Schema.string(),
-    }, optionalProperties: ['remember'] });
+      needsWeb: Schema.boolean(),
+    }, optionalProperties: ['remember', 'needsWeb'] });
     // Web mode can't use a strict response schema alongside search tools, so it relies on the JSON instructions.
     const generationConfig = web ? { maxOutputTokens: 16384 } : { responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 16384 };
     if (light && ThinkingLevel) generationConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
@@ -994,15 +1010,17 @@ function photoToJpeg(file, maxSide = 1600) {
 async function scanCardPhoto(file) {
   const data = await photoToJpeg(file);
   const contents = [{ role: 'user', parts: [{ inlineData: { mimeType: 'image/jpeg', data } }, { text: SCAN_PROMPT }] }];
-  let result;
-  while (true) {
-    const name = currentCoachModel();
-    try { result = await (await getScanModel(name)).generateContent({ contents }); break; }
+  let result, lastError = null;
+  for (const name of COACH_MODELS) {
+    if (isOut(name)) continue;
+    try { result = await (await getScanModel(name)).generateContent({ contents }); noteUsage(name); break; }
     catch (e) {
-      if (((isQuotaError(e) && !isPerMinute(e)) || isMissingModel(e)) && modelIndex < COACH_MODELS.length - 1) { modelIndex++; continue; }
+      lastError = e;
+      if ((isQuotaError(e) && !isPerMinute(e)) || isMissingModel(e)) { markOut(name, isMissingModel(e) ? 0 : quotaLimitOf(e)); continue; }
       console.error(e); throw new Error(friendlyCoachError(e));
     }
   }
+  if (!result) throw new Error(friendlyCoachError(lastError || Object.assign(new Error('resource exhausted'), { code: 'resource-exhausted' })));
   let found = [];
   try { found = JSON.parse(result.response.text().replace(/^\s*```(?:json)?|```\s*$/g, '')).cards || []; }
   catch { throw new Error('The scan came back unreadable. Try again with a clearer, closer photo.'); }
@@ -1011,9 +1029,12 @@ async function scanCardPhoto(file) {
 
 function friendlyCoachError(e) {
   const m = `${e?.code || ''} ${e?.message || ''}`.toLowerCase();
-  if (/quota|resource.?exhausted|429|rate/.test(m)) return isPerMinute(e)
-    ? 'The coach is getting questions too fast for the free plan. Wait a minute, then ask again.'
-    : 'The coach has used up today’s free requests. They reset overnight (Pacific time). Until then, use Copy for Claude.';
+  if (/quota|resource.?exhausted|429|rate/.test(m)) {
+    if (isPerMinute(e)) return 'The coach is getting questions too fast for the free plan. Wait a minute, then ask again.';
+    const u = usageToday();
+    const limits = Object.entries(u.out).filter(([k, v]) => !k.startsWith('web:') && v).map(([k, v]) => `${k}: ${v} a day`);
+    return `The coach has used up today’s free requests on every model it can use${limits.length ? ` (Google’s limits: ${limits.join(', ')})` : ''}. They reset at midnight Pacific time. Until then, use Copy for Claude. Settings shows today’s usage.`;
+  }
   if (/app.?check|recaptcha|attestation|403|permission/.test(m)) return 'Firebase blocked the coach. Check the App Check and reCAPTCHA steps in SETUP.md, including your site’s address in the reCAPTCHA domains.';
   if (/not.?found|404|model/.test(m)) return `None of the coach models are available right now. Update geminiModel in firebase-config.js to a current Flash-Lite model (see SETUP.md).`;
   if (/api.?not.?enabled|ai logic|firebasevertexai|generativelanguage/.test(m)) return 'AI Logic isn’t turned on for this Firebase project yet. See step 2 in SETUP.md.';
@@ -1027,7 +1048,7 @@ function parseCoachJson(text) {
   const a = t.indexOf('{'), b = t.lastIndexOf('}');
   if (a >= 0 && b > a) t = t.slice(a, b + 1);
   const d = JSON.parse(t);
-  return { reply: String(d.reply || ''), suggestions: Array.isArray(d.suggestions) ? d.suggestions.filter((x) => x && x.name) : [], remember: String(d.remember || '').trim() };
+  return { reply: String(d.reply || ''), suggestions: Array.isArray(d.suggestions) ? d.suggestions.filter((x) => x && x.name) : [], remember: String(d.remember || '').trim(), needsWeb: d.needsWeb === true };
 }
 // If the answer was cut off partway, rescue the written reply so it isn't lost.
 function salvageReply(text) {
@@ -1041,26 +1062,35 @@ const isPerMinute = (e) => /per.?minute|perminute|rpm/i.test(`${e?.message || ''
 const isMissingModel = (e) => /not.?found|404|is not supported|unknown model/i.test(`${e?.code || ''} ${e?.message || ''}`);
 
 async function callCoach(contents, web = false) {
-  let lastError;
-  while (modelIndex < COACH_MODELS.length) {
-    const name = currentCoachModel();
+  // 1. Web questions: try the models that include free Google Search.
+  if (web) {
+    for (const name of WEB_MODELS) {
+      if (isOut('web:' + name)) continue;
+      try {
+        const result = await (await getCoachModel(false, name, true)).generateContent({ contents });
+        noteUsage(name); return { result, web: true };
+      } catch (e) {
+        console.warn(`Web search with ${name} unavailable`, e);
+        if ((isQuotaError(e) && !isPerMinute(e)) || isMissingModel(e) || /search|ground|tool/i.test(e?.message || '')) markOut('web:' + name, quotaLimitOf(e));
+      }
+    }
+  }
+  // 2. Everything else (or if web search isn't available): the regular coach models, skipping any used up today.
+  let lastError = null;
+  for (let i = 0; i < COACH_MODELS.length; i++) {
+    const name = COACH_MODELS[i];
+    if (isOut(name)) continue;
     try {
-      return { result: await (await getCoachModel(useLightThinking, name, web)).generateContent({ contents }), web };
+      const result = await (await getCoachModel(!noThinking.has(name), name, false)).generateContent({ contents });
+      noteUsage(name); modelIndex = i; return { result, web: false };
     } catch (e) {
       lastError = e;
-      // Some models don't accept thinking settings; use the plain version and try again.
-      if (useLightThinking && /thinking/i.test(`${e?.message || ''}`)) { useLightThinking = false; continue; }
-      // If web search isn't available (tool not allowed, its own quota used up), answer without it.
-      if (web) { console.warn('Web search unavailable, answering without it', e); web = false; continue; }
-      // Out of free daily requests, or the model was retired: move to the next model.
-      if ((isQuotaError(e) && !isPerMinute(e)) || isMissingModel(e)) {
-        console.warn(`Coach model ${name} unavailable, trying the next one`, e);
-        if (modelIndex < COACH_MODELS.length - 1) { modelIndex++; continue; }
-      }
+      if (!noThinking.has(name) && /thinking/i.test(e?.message || '')) { noThinking.add(name); i--; continue; }
+      if ((isQuotaError(e) && !isPerMinute(e)) || isMissingModel(e)) { console.warn(`Coach model ${name} unavailable today`, e); markOut(name, isMissingModel(e) ? 0 : quotaLimitOf(e)); continue; }
       throw e;
     }
   }
-  throw lastError;
+  throw lastError || Object.assign(new Error('All coach models have used up today’s free quota (resource exhausted).'), { code: 'resource-exhausted' });
 }
 
 // Google requires showing its search suggestions and the sources whenever an answer used Google Search.
@@ -1078,8 +1108,22 @@ function groundingInfo(result) {
 
 const WEB_HINT = /limitless|tournament|meta|top deck|decklist|best list|website|online|https?:\/\//i;
 
-async function askCoach({ history, message, deck, collection, format, notes, otherDecks, web = false }) {
-  const useWeb = web || WEB_HINT.test(message);
+// webMode: 'auto' (search only when needed), 'always', or 'off'. forceWeb: a screen that needs current info (Matchups).
+async function askCoach({ history, message, deck, collection, format, notes, otherDecks, webMode = 'auto', forceWeb = false }) {
+  const startWithWeb = forceWeb || webMode === 'always' || (webMode === 'auto' && WEB_HINT.test(message));
+  const first = await askCoachOnce({ history, message, deck, collection, format, notes, otherDecks, useWeb: startWithWeb });
+  // "When needed": the coach answered without the web and said it needs to look something up, so ask again with search.
+  if (!startWithWeb && webMode === 'auto' && first.needsWeb) {
+    if (WEB_MODELS.every((m) => isOut('web:' + m))) return { ...first, webNote: 'The coach wanted to look this up online, but today’s free web searches are used up, so this is from its own knowledge.' };
+    try {
+      const second = await askCoachOnce({ history, message, deck, collection, format, notes, otherDecks, useWeb: true });
+      if (!second.webNote) return { ...second, lookedUp: true };
+    } catch (e) { console.warn('Web lookup failed', e); }
+    return { ...first, webNote: 'The coach wanted to look this up online, but web search isn’t available right now, so this is from its own knowledge.' };
+  }
+  return first;
+}
+async function askCoachOnce({ history, message, deck, collection, format, notes, otherDecks, useWeb }) {
   const base = [
     ...history.slice(-12).map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
     { role: 'user', parts: [{ text: `${deckContext(deck, collection, format, notes, otherDecks)}\n\n${useWeb ? '(Web search is available for this question.)\n\n' : ''}${message}` }] },
@@ -2124,7 +2168,7 @@ function addNote(notes, note) {
 }
 function AssistantPanel({ deck, collection, format, store, notes, otherDecks, onAdd, onRemove, onOpen, onOwned, wants = {}, prompt }) {
   const panelRef = useRef(null);
-  const [web, setWeb] = usePref('db.webSearch', true);
+  const [webMode, setWebMode] = usePref('db.webMode', 'auto');
   const [messages, setMessagesRaw] = useState([]), [input, setInput] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const [copied, setCopied] = useState(false), [chatLoaded, setChatLoaded] = useState(false);
   const threadRef = useRef(null);
@@ -2161,7 +2205,7 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
     const history = messages.map((m) => ({ role: m.role, content: m.role === 'assistant' ? m.text + suggestionOutcomes(m) : m.text }));
     setMessagesRaw((m) => [...m, { role: 'user', text }]); setInput(''); setBusy(true); setError(null);
     try {
-      const d = await askCoach({ history, message: text, deck, collection, format, notes, otherDecks, web: webOverride ?? web });
+      const d = await askCoach({ history, message: text, deck, collection, format, notes, otherDecks, webMode, forceWeb: webOverride === true });
       let suggestions = d.suggestions;
       if (suggestions.length) {
         let res = [];
@@ -2171,7 +2215,7 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
       // Cards the coach mentioned in bold but forgot to list still get pictures.
       try { suggestions = [...suggestions, ...await findMentionedCards(mentionedCardNames(d.reply, suggestions), collection, deck)]; } catch {}
       const remember = d.remember && !notes.toLowerCase().includes(d.remember.toLowerCase()) ? d.remember.slice(0, 200) : '';
-      setMessages((m) => [...m, { role: 'assistant', text: d.reply, suggestions, remember, rememberState: remember ? 'ask' : '',
+      setMessages((m) => [...m, { role: 'assistant', text: d.reply, suggestions, remember, rememberState: remember ? 'ask' : '', lookedUp: !!d.lookedUp,
         searchHtml: d.searchHtml || '', sources: d.sources || [], webNote: d.webNote || '' }]);
     } catch (e) { setError(e.message); setMessagesRaw((m) => m.slice(0, -1)); setInput(text); }
     finally { setBusy(false); }
@@ -2212,6 +2256,7 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
           ${m.sources.map((src) => html`<a href=${src.uri} target="_blank" rel="noopener">${src.title}</a>`)}</div>`}
         ${m.searchHtml && html`<${SearchSuggestions} htmlText=${m.searchHtml} />`}
         ${m.webNote && html`<p class="small muted">${m.webNote}</p>`}
+        ${m.lookedUp && html`<p class="small muted">The coach searched the web for this answer.</p>`}
         ${m.suggestions?.length > 0 && html`<div class="suggest">${m.suggestions.map((s, si) => html`
           ${s.group && s.group !== m.suggestions[si - 1]?.group && html`<p class="sugg-group">${s.group}</p>`}
           <div class=${`sugg ${s.action}`}>
@@ -2241,8 +2286,10 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
       <textarea rows="3" value=${input} placeholder=${COACH_READY ? 'Ask, or paste a list from Limitless…' : 'Type a question for Claude…'} aria-label="Message the deck coach"
         onInput=${(e) => setInput(e.target.value)}
         onKeyDown=${(e) => { if (COACH_READY && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}></textarea>
-      <label class="check webtoggle" title="Lets the coach look up decklists on Limitless and other sites">
-        <input type="checkbox" checked=${web} onChange=${(e) => setWeb(e.target.checked)} /> Search the web</label>
+      <label class="webtoggle" title="Lets the coach look up decklists on Limitless and other sites">Web search:
+        <select value=${webMode} onChange=${(e) => setWebMode(e.target.value)} aria-label="Web search">
+          <option value="auto">When needed</option><option value="always">Always</option><option value="off">Off</option>
+        </select></label>
       <div class="composer-actions">
         ${COACH_READY && html`<button class="btn" disabled=${busy || !input.trim()}>Send</button>`}
         <button type="button" class="btn ghost" onClick=${copyForClaude}>${copied ? 'Copied' : 'Copy for Claude'}</button>
@@ -2255,6 +2302,14 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
 }
 
 /* ---------- Settings and family code ---------- */
+function UsageNote() {
+  const u = usageToday();
+  const by = Object.entries(u.models).map(([k, v]) => `${k} ${v}`).join(', ');
+  const out = Object.entries(u.out).map(([k, v]) => `${k.replace(/^web:/, 'web search on ')}${v ? ` (limit ${v})` : ''}`);
+  return html`<p class="small muted">Coach and scan requests from this device today: <b>${u.total}</b>${by ? ` (${by})` : ''}.
+    ${out.length ? ` Used up until midnight Pacific: ${out.join(', ')}.` : ''} Other devices share the same free limits.</p>`;
+}
+
 function Settings({ mode, notes, onSaveNotes, onClose, onDisconnect, theme, onTheme, localInfo }) {
   const [draft, setDraft] = useState(notes || '');
   const [saved, setSaved] = useState(false);
@@ -2280,6 +2335,7 @@ function Settings({ mode, notes, onSaveNotes, onClose, onDisconnect, theme, onTh
       <hr class="divider" />
       <p class="small">${mode === 'firebase' ? html`<b>Shared with Firebase.</b> Decks, cards, chats and coach notes sync across your devices.` : 'Saved on this device only. Fill in firebase-config.js to share across devices.'}</p>
       <p class="small">${COACH_READY ? html`<b>Deck coach is on</b> (Google Gemini, free tier: ${currentCoachModel()}).` : 'Deck coach is off until AI Logic and App Check are set up (SETUP.md, step 2). Copy for Claude still works.'}</p>
+      ${COACH_READY && html`<${UsageNote} />`}
       <p class="small">Card data and images come from <a href="https://tcgdex.dev" target="_blank" rel="noopener">TCGdex</a>, a free, open-source card database.
         ${localInfo ? html` <b>Saved card data:</b> ${localInfo.cards.length.toLocaleString()} cards, updated ${localInfo.updated} (refreshed weekly).`
           : ' The saved copy of the card data hasn’t been created yet, so cards load live from TCGdex (see SETUP.md, step 5).'}</p>

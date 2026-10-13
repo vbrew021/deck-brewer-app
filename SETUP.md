@@ -78,10 +78,18 @@ Good to know:
   free requests, use **Copy for Claude** until they reset overnight.
 - On the free tier, Google's terms let it use your requests to improve its
   products. Deck lists and card names are all that's sent.
-- With **Search the web** on, the coach can look things up on Limitless and
-  other sites. Web searches may have their own free limit; if it runs out,
-  the coach answers from its own knowledge and says so. Untick the box to
-  save searches for when you need them.
+- **Web search** (under the chat box) is set to **When needed** by default:
+  the coach answers from what it knows and only searches the web when a
+  question needs current information (top decks, very new cards, a link you
+  pasted). **Always** searches every time; **Off** never does. Google's free
+  tier only includes search on its 2.5 models (about 500 searches a day). If
+  search runs out, the coach answers from its own knowledge and says so.
+- Free limits are per model and per Firebase project, shared by all your
+  devices, and reset at midnight Pacific time. The coach moves to another
+  free model when one runs out, and Settings shows today's usage. To see
+  Google's exact limits for your project, sign in to
+  https://aistudio.google.com/rate-limit with the same Google account and
+  pick your Firebase project.
 - If Google retires the model, the app tries other Flash-Lite models on its
   own. You can also change `geminiModel` in `firebase-config.js` to a current
   Flash-Lite model from Firebase's AI Logic models page.

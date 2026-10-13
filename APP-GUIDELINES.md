@@ -99,7 +99,11 @@ an AI coach to find substitutes and understand the deck.
   free tier, Spark plan) with App Check using the reCAPTCHA v3 provider.
   Use Flash-Lite models: in late 2026 the free tier gives them about 500
   requests a day versus about 20 for standard Flash. `COACH_MODELS` lists
-  fallbacks used when a model is out of daily quota or retired.
+  fallbacks used when a model is out of daily quota or retired. Free Google
+  Search grounding only exists on 2.5 models, so web questions use
+  `WEB_MODELS` first. `usageToday()` / `markOut()` remember used-up models
+  until midnight Pacific (per device) so they're skipped, and
+  `quotaLimitOf()` reads Google's limit from 429 errors.
   Everything must stay free: no billing account, no paid API keys.
 - The coach suggests both cards in the collection and cards not in the app
   yet (the app collection may be incomplete); suggestions can carry a
@@ -125,9 +129,11 @@ an AI coach to find substitutes and understand the deck.
 7. **Coach chat UI.** Coach messages use the `msg-user` / `msg-coach`
    classes; never reuse the panel's `assistant` class on messages (that caused
    overlapping sticky messages in 1.2.0). Replies render via `richText()`.
-8. **Web search.** With "Search the web" on (per-device setting, default on)
-   or when a question mentions Limitless, tournaments, or a link, the coach
-   uses a model variant with the `googleSearch` and `urlContext` tools. That
+8. **Web search.** Web search mode is a per-device setting (`db.webMode`): "auto" (When
+   needed, default), "always", or "off". In auto, `askCoach()` first asks
+   without search; if the reply sets `needsWeb`, it asks again with search.
+   Questions matching `WEB_HINT` (Limitless, tournaments, top decks, links)
+   and Matchups (`forceWeb`) search right away. Web questions use a model variant with the `googleSearch` and `urlContext` tools. That
    variant has no response schema (it relies on the JSON instructions and the
    tolerant parser). Google requires displaying `searchEntryPoint`
    (rendered in a shadow DOM by `SearchSuggestions`) and the sources from

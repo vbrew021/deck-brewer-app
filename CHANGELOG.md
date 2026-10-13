@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.11.2 (October 10, 2026)
+- Changed: the "Search the web" checkbox is now a Web search setting: When
+  needed (new default), Always, or Off. With When needed, the coach answers
+  from its own knowledge and, if a question needs current information, the
+  app automatically asks again with web search. Questions that mention
+  Limitless, tournaments, top decks or a link search right away.
+- This saves free requests and web searches for when they're useful.
+- No Firebase changes needed.
+
+## 1.11.1 (October 10, 2026)
+- Fixed: web-search questions used up extra requests. Google's free tier only
+  includes Google Search on its 2.5 models, so web questions now go to
+  gemini-2.5-flash-lite (then gemini-2.5-flash) and fall back to answering
+  without search if those are used up.
+- Added: gemini-2.5-flash-lite as another fallback coach model (free limits
+  are per model, so this adds more free requests per day).
+- The app now remembers which models are used up for the day and skips them,
+  instead of retrying them on every question.
+- Settings shows how many coach and scan requests this device made today and
+  which models are used up. The "used up" message lists Google's limits.
+- No Firebase changes needed.
+
 ## 1.11.0 (October 10, 2026)
 - Added: Checkup on the Deck tab. Instant checks for deck size, Basic Pokémon
   and mulligan odds, evolution lines, Energy types, Supporters, draw and
