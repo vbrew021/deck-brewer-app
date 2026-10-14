@@ -14,4 +14,4 @@ export const firebaseConfig = {
 export const recaptchaSiteKey = "6LdwvegtAAAAABBlCUt6Y5o6xx1-PwlNu-kOMCwa";
 
 // 3. Which Gemini model the coach uses. Change this if Google retires it.
-export const geminiModel = "gemini-3.8-flash";
+export const geminiModel = "gemini-3.5-flash-lite";
