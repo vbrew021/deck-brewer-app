@@ -141,7 +141,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; letter-sp
 .deckpick input { font-weight: 600; flex: 0 1 240px; min-width: 120px; max-width: 240px; text-overflow: ellipsis; }
 .top > .format { width: 190px; }
 /* On narrower screens the header wraps in a fixed order instead of shifting with the deck name. */
-@media (max-width: 1100px) {
+@media (max-width: 1339px) {
   .top { flex-wrap: wrap; }
   .deckpick { order: 5; flex-basis: 100%; }
   .top .gear { margin-left: auto; }
@@ -349,6 +349,12 @@ img.sym { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px;
 .err-detail { margin-top: 4px; }
 .err-detail code { display: block; white-space: pre-wrap; word-break: break-word; font-size: 11px; color: var(--muted); margin: 4px 0; }
 .notice { margin: 6px 0 0; }
+.draw-card.bottomed { outline: 3px solid var(--short); opacity: .6; }
+.land-odds { display: flex; align-items: flex-end; gap: 6px; height: 130px; margin: 6px 0 10px; }
+.lo-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; width: 52px; height: 100%; }
+.lo-bar { width: 28px; background: #A0784E; border-radius: 4px 4px 0 0; min-height: 2px; }
+.lo-p, .lo-k { font-size: 11px; color: var(--muted); }
+.lo-k { font-weight: 600; }
 .chat-note { text-align: center; font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
 .thinking { color: var(--muted); font-style: italic; }
 .suggest { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -400,7 +406,7 @@ img.sym { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px;
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.12.3';
+const VERSION = '1.13.0';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -1289,6 +1295,13 @@ For each different card, give:
 - number: the collector number before the slash, like 128 in 128/167 (empty if you can't read it)
 - count: how many copies of that exact card are in the photo
 Only list real cards you can actually see. If a card is too blurry to name, skip it.`;
+const SCAN_PROMPT_MTG = `Identify every Magic: The Gathering card you can see in this photo (it may be one card or a binder page of several).
+For each different card, give:
+- name: the card name exactly as printed (for double-faced cards, the front face name)
+- setCode: the set code printed at the bottom left, like MH3, OTJ or 2X2 (empty if you can't read it)
+- number: the collector number printed at the bottom left, without leading zeros, like 117 (empty if you can't read it)
+- count: how many copies of that exact card are in the photo
+Only list real cards you can actually see. If a card is too blurry to name, skip it.`;
 const scanModels = {};
 function getScanModel(modelName) {
   scanModels[modelName] ||= (async () => {
@@ -1319,9 +1332,9 @@ function photoToJpeg(file, maxSide = 1600) {
     img.src = URL.createObjectURL(file);
   });
 }
-async function scanCardPhoto(file) {
+async function scanCardPhoto(file, game = 'pokemon') {
   const data = await photoToJpeg(file);
-  const contents = [{ role: 'user', parts: [{ inlineData: { mimeType: 'image/jpeg', data } }, { text: SCAN_PROMPT }] }];
+  const contents = [{ role: 'user', parts: [{ inlineData: { mimeType: 'image/jpeg', data } }, { text: game === 'mtg' ? SCAN_PROMPT_MTG : SCAN_PROMPT }] }];
   let result, lastError = null;
   for (const name of COACH_MODELS) {
     if (isOut(name)) continue;
@@ -1718,11 +1731,11 @@ function DeckView({ deck, decks, collection, stats, onOpen, onImport, onAsk, for
       <div class="row end">
         <button class="btn ghost" onClick=${() => setShowImport(!showImport)}>${showImport ? 'Hide import' : 'Import list'}</button>
         <button class="btn ghost" onClick=${copy} disabled=${!deck.entries.length}>${copied ? 'Copied' : 'Copy list'}</button>
-        ${!mtg && html`<button class="btn ghost" onClick=${() => setTester(true)} disabled=${!stats.total}>Test draw</button>`}
+        <button class="btn ghost" onClick=${() => setTester(true)} disabled=${!stats.total}>Test draw</button>
         <button class="btn ghost" onClick=${() => setComparing(true)} disabled=${decks.length < 2}>Compare</button>
-        ${!mtg && html`<button class="btn ghost" onClick=${() => setPanel('checkup')} disabled=${!stats.total}>Checkup</button>
+        <button class="btn ghost" onClick=${() => setPanel('checkup')} disabled=${!stats.total}>Checkup</button>
         <button class="btn ghost" onClick=${() => setPanel('matchups')} disabled=${!stats.total}>Matchups</button>
-        <button class="btn ghost" onClick=${() => setPanel('share')} disabled=${!stats.total}>Image & print</button>`}
+        <button class="btn ghost" onClick=${() => setPanel('share')} disabled=${!stats.total}>Image & print</button>
       </div>
     </div>
     ${stats.issues.length > 0 && stats.total > 0 && html`<ul class="issues">${stats.issues.map((i) => html`<li>${i}</li>`)}</ul>`}
@@ -1731,10 +1744,11 @@ function DeckView({ deck, decks, collection, stats, onOpen, onImport, onAsk, for
       <ul>${conflicts.map((c) => html`<li><button class="linkbtn" onClick=${() => onOpen(c.card)}>${c.card.name}</button>${`: ${c.decks.map((d) => `${d.count} in ${d.id === deck.id ? 'this deck' : d.name}`).join(', ')}. Your library has ${c.owned}, so you’re ${c.total - c.owned} short.`}</li>`)}</ul>
       <p class="small muted">Only counts what’s in your Card Library, and skips ${mtg ? 'basic lands' : 'basic Energy'}.</p>
     </details>`}
-    ${tester && html`<${DrawTester} deck=${deck} onOpen=${onOpen} onClose=${() => setTester(false)} />`}
+    ${tester && (mtg ? html`<${MtgDrawTester} deck=${deck} onOpen=${onOpen} onClose=${() => setTester(false)} />` : html`<${DrawTester} deck=${deck} onOpen=${onOpen} onClose=${() => setTester(false)} />`)}
     ${comparing && html`<${DeckCompare} deck=${deck} decks=${decks} onOpen=${onOpen} onClose=${() => setComparing(false)} />`}
-    ${panel === 'checkup' && html`<${DeckCheckup} deck=${deck} format=${format} onOpen=${onOpen} onAsk=${(t) => { setPanel(null); onAsk(t); }} onClose=${() => setPanel(null)} />`}
-    ${panel === 'matchups' && html`<${Matchups} deck=${deck} decks=${decks} onAsk=${(t, web) => { setPanel(null); onAsk(t, web); }} onClose=${() => setPanel(null)} />`}
+    ${panel === 'checkup' && (mtg ? html`<${MtgCheckup} deck=${deck} format=${format} onAsk=${(t) => { setPanel(null); onAsk(t); }} onClose=${() => setPanel(null)} />`
+      : html`<${DeckCheckup} deck=${deck} format=${format} onOpen=${onOpen} onAsk=${(t) => { setPanel(null); onAsk(t); }} onClose=${() => setPanel(null)} />`)}
+    ${panel === 'matchups' && html`<${Matchups} deck=${deck} decks=${decks} format=${format} onAsk=${(t, web) => { setPanel(null); onAsk(t, web); }} onClose=${() => setPanel(null)} />`}
     ${panel === 'share' && html`<${ShareDeck} deck=${deck} onClose=${() => setPanel(null)} />`}
     ${showImport && html`<${ImportBox} title="Import a decklist" game=${game}
       hint=${mtg ? 'Paste a list exported from MTG Arena, MTGO, Moxfield, MTGGoldfish, or a chat. A “Sideboard” heading (or a blank line before the last 15 cards) marks the sideboard.' : 'Paste a list exported from Limitless, Pokémon TCG Live, or a chat. The badges will show which cards you already own.'}
@@ -1987,32 +2001,43 @@ function DeckCheckup({ deck, format, onOpen, onAsk, onClose }) {
 }
 
 /* ---------- Matchup advice ---------- */
-function Matchups({ deck, decks, onAsk, onClose }) {
+function Matchups({ deck, decks, onAsk, onClose, format = 'standard' }) {
   useEscape(onClose);
+  const mtg = gameOf(deck) === 'mtg';
   const [opp, setOpp] = useState('');
   const others = decks.filter((d) => d.id !== deck.id && d.entries.length);
   const [mine, setMine] = useState(others[0]?.id || '');
   const ask = (text, web) => onAsk(text, web);
+  const fmt = mtg ? (format === 'casual' ? 'Modern' : formatLabel('mtg', format)) : 'Standard';
+  const site = mtg ? 'mtggoldfish.com (the metagame page) and mtgtop8.com' : 'limitlesstcg.com';
+  const sideboarding = mtg ? ' For each, include a short sideboard plan: which cards to bring in and take out.' : '';
+  const topPrompt = mtg
+    ? `Look up the current ${fmt} metagame on ${site}. For the top 5 decks, tell me how "${deck.name}" matches up against each one: who's favored, the key cards or threats to watch for, and one tip for playing the matchup.${sideboarding} Suggest cards that would help my worst matchups.`
+    : `Look up the most popular decks in the current Standard format on limitlesstcg.com. For the top 5, tell me how "${deck.name}" matches up against each one: who's favored, the key cards or threats to watch for, and one tip for playing the matchup. Suggest any cards that would help our worst matchups.`;
+  const oppPrompt = (o) => `How does "${deck.name}" match up against ${o}${mtg ? ` in ${fmt}` : ''}? Look up current ${o} lists on ${site}. Tell me who's favored, what their deck tries to do, the key threats, how to play the matchup turn by turn, and cards that would help.${mtg ? ' Include a sideboard plan: what to bring in and take out, on the play and on the draw.' : ''}`;
+  const minePrompt = (d) => mtg
+    ? `Here is my other deck, "${d.name}":\n${exportDeck(d)}\n\nHow does "${deck.name}" match up against it? Who's favored, what should each side watch out for, and what should each deck side in and out?`
+    : `Here is our other deck, "${d.name}":\n${exportDecklist(d.entries)}\n\nHow does "${deck.name}" match up against it? Who's favored, what should each player watch out for, and give each side one tip. Keep it fun and simple to follow.`;
   return html`<div class="scrim" onClick=${onClose}>
     <div class="modal tester" role="dialog" aria-modal="true" aria-label="Matchups" onClick=${(e) => e.stopPropagation()}>
       <div class="tester-head"><h2>Matchups</h2><button class="btn ghost small" onClick=${onClose}>Close</button></div>
-      <p class="small">Ask the coach how “${deck.name}” does against other decks and what to watch for.</p>
+      <p class="small">Ask the coach how “${deck.name}” does against other decks${mtg ? ', with sideboard plans,' : ''} and what to watch for.</p>
       <div class="matchup-opt">
-        <strong>Today’s top decks</strong>
-        <p class="small muted">Looks up the most popular decks on Limitless right now (uses web search).</p>
-        <button class="btn" onClick=${() => ask(`Look up the most popular decks in the current Standard format on limitlesstcg.com. For the top 5, tell me how "${deck.name}" matches up against each one: who's favored, the key cards or threats to watch for, and one tip for playing the matchup. Suggest any cards that would help our worst matchups.`, true)}>Check the top decks</button>
+        <strong>${mtg ? `Today’s top ${fmt} decks` : 'Today’s top decks'}</strong>
+        <p class="small muted">Looks up the most popular decks on ${mtg ? 'MTGGoldfish and MTGTop8' : 'Limitless'} right now (uses web search).</p>
+        <button class="btn" onClick=${() => ask(topPrompt, true)}>Check the top decks</button>
       </div>
       <div class="matchup-opt">
         <strong>A specific deck</strong>
-        <div class="searchbar"><input value=${opp} onInput=${(e) => setOpp(e.target.value)} placeholder="Like Dragapult ex or Gardevoir ex" aria-label="Opponent's deck" />
-          <button class="btn" disabled=${!opp.trim()} onClick=${() => ask(`How does "${deck.name}" match up against ${opp.trim()}? Look up current ${opp.trim()} lists on limitlesstcg.com. Tell me who's favored, what their deck tries to do, the key threats, how to play the matchup turn by turn, and cards that would help.`, true)}>Ask</button></div>
+        <div class="searchbar"><input value=${opp} onInput=${(e) => setOpp(e.target.value)} placeholder=${mtg ? 'Like Boros Energy or Amulet Titan' : 'Like Dragapult ex or Gardevoir ex'} aria-label="Opponent's deck" />
+          <button class="btn" disabled=${!opp.trim()} onClick=${() => ask(oppPrompt(opp.trim()), true)}>Ask</button></div>
       </div>
       <div class="matchup-opt">
-        <strong>One of our decks</strong>
-        <p class="small muted">Great before a game at home.</p>
+        <strong>${mtg ? 'One of my decks' : 'One of our decks'}</strong>
+        <p class="small muted">${mtg ? 'Handy for testing against your own decks.' : 'Great before a game at home.'}</p>
         ${others.length ? html`<div class="searchbar">
-          <select value=${mine} onChange=${(e) => setMine(e.target.value)} aria-label="Our other deck">${others.map((d) => html`<option value=${d.id}>${d.name}</option>`)}</select>
-          <button class="btn" onClick=${() => { const d = others.find((x) => x.id === mine); if (d) ask(`Here is our other deck, "${d.name}":\n${exportDecklist(d.entries)}\n\nHow does "${deck.name}" match up against it? Who's favored, what should each player watch out for, and give each side one tip. Keep it fun and simple to follow.`, false); }}>Ask</button>
+          <select value=${mine} onChange=${(e) => setMine(e.target.value)} aria-label="Other deck">${others.map((d) => html`<option value=${d.id}>${d.name}</option>`)}</select>
+          <button class="btn" onClick=${() => { const d = others.find((x) => x.id === mine); if (d) ask(minePrompt(d), false); }}>Ask</button>
         </div>` : html`<p class="small muted">Make another deck to compare against.</p>`}
       </div>
     </div>
@@ -2033,7 +2058,11 @@ function loadImage(src) {
 function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 async function drawDeckImage(deck, withPictures = true) {
   const cw = 120, ch = 168, gap = 10, pad = 28, head = 86, foot = 34;
-  const groups = [['pokemon', 'Pokémon'], ['trainer', 'Trainers'], ['energy', 'Energy']].map(([k, label]) => ({ label, list: sortEntries(deck.entries.filter((e) => sectionOf(e.card) === k)) })).filter((g) => g.list.length);
+  const mtgDeck = gameOf(deck) === 'mtg';
+  const sections = mtgDeck ? MTG_SECTIONS : [['pokemon', 'Pokémon'], ['trainer', 'Trainers'], ['energy', 'Energy']];
+  const groups = [...sections.map(([k, label]) => ({ label, list: sortEntries(deck.entries.filter((e) => sectionOf(e.card) === k)) })),
+    ...(mtgDeck ? [{ label: 'Sideboard', list: sortEntries(deck.side || []) }] : [])].filter((g) => g.list.length);
+  const allEntries = groups.flatMap((g) => g.list);
   const cols = Math.min(10, Math.max(5, ...groups.map((g) => g.list.length))); // narrower image for small decks
   const rowsFor = (g) => Math.ceil(g.list.length / cols);
   const height = pad + head + groups.reduce((n, g) => n + 30 + rowsFor(g) * (ch + gap), 0) + foot;
@@ -2044,10 +2073,15 @@ async function drawDeckImage(deck, withPictures = true) {
   const total = deck.entries.reduce((n, e) => n + e.count, 0);
   ctx.fillStyle = '#FFFFFF'; ctx.font = '800 38px "Bricolage Grotesque", system-ui, sans-serif'; ctx.fillText(deck.name, pad, pad + 40);
   ctx.fillStyle = '#AEB8D4'; ctx.font = '500 18px Lexend, system-ui, sans-serif';
-  ctx.fillText(groups.map((g) => `${g.list.reduce((n, e) => n + e.count, 0)} ${g.label}`).join('  ·  ') + `  ·  ${total} cards`, pad, pad + 70);
-  const images = withPictures ? await Promise.all(deck.entries.map((e) => loadImage(e.card.image))) : [];
-  const imgFor = (e) => images[deck.entries.indexOf(e)] || null;
-  const accent = { 'Pokémon': '#A98BEA', Trainers: '#6EA6F2', Energy: '#E8B33A' };
+  const subtitle = mtgDeck
+    ? (() => { const c = (f) => deck.entries.filter((e) => f(e.card)).reduce((n, e) => n + e.count, 0); const cr = c((x) => mtgSection(x) === 'creature'), la = c(isLand), sb = (deck.side || []).reduce((n, e) => n + e.count, 0);
+        return `${cr} Creatures  ·  ${total - cr - la} Spells  ·  ${la} Lands  ·  ${total} cards${sb ? `  +  ${sb} sideboard` : ''}`; })()
+    : groups.map((g) => `${g.list.reduce((n, e) => n + e.count, 0)} ${g.label}`).join('  ·  ') + `  ·  ${total} cards`;
+  ctx.fillText(subtitle, pad, pad + 70);
+  const images = withPictures ? await Promise.all(allEntries.map((e) => loadImage(e.card.image))) : [];
+  const imgFor = (e) => images[allEntries.indexOf(e)] || null;
+  const accent = { 'Pokémon': '#A98BEA', Trainers: '#6EA6F2', Energy: '#E8B33A', Creatures: '#5FA868', Planeswalkers: '#B07CD6', Battles: '#D07A4A',
+    Instants: '#4A8FD6', Sorceries: '#D65A5A', Artifacts: '#9AA3AF', Enchantments: '#D6B04A', Lands: '#A0784E', Other: '#8A93A8', Sideboard: '#AEB8D4' };
   let y = pad + head;
   for (const g of groups) {
     ctx.fillStyle = accent[g.label]; ctx.font = '700 20px Lexend, system-ui, sans-serif'; ctx.fillText(`${g.label} (${g.list.reduce((n, e) => n + e.count, 0)})`, pad, y + 20);
@@ -2068,8 +2102,8 @@ async function drawDeckImage(deck, withPictures = true) {
     y += rowsFor(g) * (ch + gap);
   }
   ctx.fillStyle = '#7F8AA8'; ctx.font = '14px Lexend, system-ui, sans-serif'; ctx.fillText('Made with TCG Deck Brewer', pad, height - 14);
-  const missing = withPictures ? deck.entries.filter((e, i) => !images[i]).length : deck.entries.length;
-  return new Promise((resolve, reject) => { try { canvas.toBlob((b) => (b ? resolve({ blob: b, missing }) : reject(new Error('no image'))), 'image/png'); } catch (e) { reject(e); } });
+  const missing = withPictures ? allEntries.filter((e, i) => !images[i]).length : allEntries.length;
+  return new Promise((resolve, reject) => { try { canvas.toBlob((b) => (b ? resolve({ blob: b, missing, count: allEntries.length }) : reject(new Error('no image'))), 'image/png'); } catch (e) { reject(e); } });
 }
 function printDecklist(deck, player) {
   const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -2092,6 +2126,27 @@ function printDecklist(deck, player) {
   <div class="tot">Total cards: ${total(deck.entries)}</div></body></html>`);
   w.document.close();
 }
+// Wizards-style decklist: main deck and sideboard with quantities and totals.
+function printMtgDecklist(deck, player) {
+  const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  const total = (list) => list.reduce((n, e) => n + e.count, 0);
+  const main = sortMtgEntries(deck.entries || []), side = sortMtgEntries(deck.side || []);
+  const rows = (list) => list.map((e) => `<tr><td class="q">${e.count}</td><td>${esc(e.card.name)}</td></tr>`).join('');
+  const w = window.open('', '_blank');
+  if (!w) { alert('Your browser blocked the print window. Allow pop-ups for this site and try again.'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(deck.name)} decklist</title><style>
+    body{font:13px/1.35 Arial,Helvetica,sans-serif;color:#000;margin:24px}h1{font-size:20px;margin:0 0 4px}.who{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 24px;margin:12px 0 16px}
+    .who div{border-bottom:1px solid #000;padding:14px 0 2px;font-size:11px;color:#333}.who b{font-size:13px;color:#000}.cols{display:grid;grid-template-columns:3fr 2fr;gap:20px}
+    table{width:100%;border-collapse:collapse}th,td{border:1px solid #000;padding:3px 6px;text-align:left}th{background:#eee}td.q{width:40px;text-align:center}.tot{font-weight:bold;margin-top:6px}
+    .btn{margin-bottom:16px}@media print{.btn{display:none}}
+  </style></head><body><button class="btn" onclick="print()">Print</button>
+  <h1>${esc(deck.name)}</h1><div>Magic: The Gathering decklist</div>
+  <div class="who"><div>Player name: <b>${esc(player || '')}</b></div><div>Event:</div><div>Date:</div></div>
+  <div class="cols"><div><table><thead><tr><th>Qty</th><th>Main deck</th></tr></thead><tbody>${rows(main)}</tbody></table><div class="tot">Main deck total: ${total(main)}</div></div>
+  <div><table><thead><tr><th>Qty</th><th>Sideboard</th></tr></thead><tbody>${rows(side)}</tbody></table><div class="tot">Sideboard total: ${total(side)}</div></div></div>
+  </body></html>`);
+  w.document.close();
+}
 function ShareDeck({ deck, onClose }) {
   useEscape(onClose);
   const [img, setImg] = useState({ busy: true, url: '', blob: null, note: '' });
@@ -2102,7 +2157,7 @@ function ShareDeck({ deck, onClose }) {
       let blob, note = '';
       try {
         const r = await drawDeckImage(deck, true); blob = r.blob;
-        if (r.missing) note = r.missing === deck.entries.length ? 'Card pictures couldn’t be loaded into the image, so it shows card names instead.' : `${r.missing} card picture${r.missing === 1 ? '' : 's'} couldn’t be loaded, so those show the card name instead.`;
+        if (r.missing) note = r.missing === r.count ? 'Card pictures couldn’t be loaded into the image, so it shows card names instead.' : `${r.missing} card picture${r.missing === 1 ? '' : 's'} couldn’t be loaded, so those show the card name instead.`;
       } catch { blob = (await drawDeckImage(deck, false)).blob; note = 'Card pictures couldn’t be added to the image, so it shows card names instead.'; }
       url = URL.createObjectURL(blob);
       if (live) setImg({ busy: false, url, blob, note });
@@ -2124,7 +2179,7 @@ function ShareDeck({ deck, onClose }) {
       <h3>Printable decklist</h3>
       <p class="small muted">A tournament-style list with spots for player details. Opens in a new window to print or save as PDF.</p>
       <div class="searchbar"><input value=${player} onInput=${(e) => setPlayer(e.target.value)} placeholder="Player name (optional)" aria-label="Player name" />
-        <button class="btn" onClick=${() => printDecklist(deck, player)}>Open printable list</button></div>
+        <button class="btn" onClick=${() => (gameOf(deck) === 'mtg' ? printMtgDecklist(deck, player) : printDecklist(deck, player))}>Open printable list</button></div>
     </div>
   </div>`;
 }
@@ -2233,8 +2288,149 @@ function DrawTester({ deck, onOpen, onClose }) {
   </div>`;
 }
 
+/* ---------- Magic: test draw (London mulligan) ---------- */
+// Hypergeometric: chance of exactly k of K "successes" in n cards drawn from N.
+const hyperPmf = (N, K, n, k) => Math.exp(logChoose(K, k) + logChoose(N - K, n - k) - logChoose(N, n));
+const atLeast = (N, K, n, k) => { let p = 0; for (let i = k; i <= Math.min(n, K); i++) p += hyperPmf(N, K, n, i); return Math.min(1, p); };
+const isLand = (c) => mtgSection(c) === 'land';
+
+function MtgDrawTester({ deck, onOpen, onClose }) {
+  useEscape(onClose);
+  const pile = useMemo(() => deck.entries.flatMap((e) => Array.from({ length: e.count }, (_, i) => ({ ...e.card, _k: `${e.card.id}-${i}` }))), [deck]);
+  const N = pile.length, L = pile.filter(isLand).length;
+  const [onPlay, setOnPlay] = useState(true);
+  const [g, setG] = useState(null); // { library, hand, mulligans, toBottom:Set, kept, turn }
+  const [pick, setPick] = useState('');
+  function deal(mulligans) { const lib = shuffle(pile); setG({ library: lib.slice(7), hand: lib.slice(0, 7), mulligans, toBottom: new Set(), kept: mulligans === 0 ? false : false, turn: 0 }); }
+  useEffect(() => deal(0), []);
+  const needBottom = g ? Math.min(g.mulligans, 7) : 0;
+  function keep() {
+    // London mulligan: after N mulligans, put N cards from your hand on the bottom of your library.
+    setG((x) => { const bottom = x.hand.filter((c) => x.toBottom.has(c._k)); return { ...x, hand: x.hand.filter((c) => !x.toBottom.has(c._k)), library: [...x.library, ...bottom], toBottom: new Set(), kept: true, turn: 1 }; });
+  }
+  function nextTurn() {
+    setG((x) => {
+      const turn = x.turn + 1;
+      return x.library.length ? { ...x, turn, hand: [...x.hand, x.library[0]], library: x.library.slice(1) } : { ...x, turn };
+    });
+  }
+  // On the draw you also draw on turn 1.
+  useEffect(() => { if (g?.kept && g.turn === 1 && !onPlay && !g.drewFirst) setG((x) => ({ ...x, drewFirst: true, hand: [...x.hand, x.library[0]], library: x.library.slice(1) })); }, [g?.kept, g?.turn, onPlay]);
+  const toggleBottom = (c) => setG((x) => { const t = new Set(x.toBottom); t.has(c._k) ? t.delete(c._k) : t.size < needBottom && t.add(c._k); return { ...x, toBottom: t }; });
+  const handLands = g ? g.hand.filter(isLand).length : 0;
+  const names = [...new Set(deck.entries.map((e) => e.card.name))].sort();
+  const copies = pick ? deck.entries.filter((e) => e.card.name === pick).reduce((n, e) => n + e.count, 0) : 0;
+  const seen = (turn) => 7 + (onPlay ? turn - 1 : turn); // cards seen by your turn N
+  const mini = (c) => html`<button key=${c._k} class=${`draw-card ${g?.toBottom.has(c._k) ? 'bottomed' : ''}`} title=${c.name}
+    onClick=${() => (g && !g.kept && needBottom ? toggleBottom(c) : onOpen(c))}><${CardImage} key=${c._k} card=${c} /></button>`;
+  const pmf = Array.from({ length: 8 }, (_, k) => (N >= 7 ? hyperPmf(N, L, 7, k) : 0));
+  const keepable = pmf.slice(2, 6).reduce((a, b) => a + b, 0);
+  return html`<div class="scrim" onClick=${onClose}>
+    <div class="modal tester" role="dialog" aria-modal="true" aria-label="Test draw" onClick=${(e) => e.stopPropagation()}>
+      <div class="tester-head"><h2>Test draw</h2><button class="btn ghost small" onClick=${onClose}>Close</button></div>
+      <div class="row" style="margin-bottom:8px">
+        <div class="seg"><button class=${onPlay ? 'on' : ''} onClick=${() => setOnPlay(true)}>On the play</button><button class=${!onPlay ? 'on' : ''} onClick=${() => setOnPlay(false)}>On the draw</button></div>
+        ${N < 60 && html`<span class="small warn">This deck has ${N} cards, so these odds are for ${N}.</span>`}
+      </div>
+      ${g && html`
+        <p class="small">${!g.kept
+          ? (g.mulligans ? html`<b>Mulligan ${g.mulligans}.</b> Choose ${needBottom} card${needBottom === 1 ? '' : 's'} to put on the bottom (${g.toBottom.size} chosen), then keep.` : 'Your opening hand. Keep it or mulligan.')
+          : html`<b>Turn ${g.turn}</b> ${onPlay ? 'on the play' : 'on the draw'}. ${g.hand.length} cards in hand, ${handLands} land${handLands === 1 ? '' : 's'}, ${g.library.length} left in the library.`}</p>
+        <div class="draw-row">${g.hand.map(mini)}</div>
+        <div class="row" style="margin:10px 0">
+          ${!g.kept ? html`
+            <button class="btn" disabled=${g.toBottom.size !== needBottom} onClick=${keep}>Keep${g.mulligans ? ` ${7 - needBottom}` : ''}</button>
+            <button class="btn ghost" disabled=${g.mulligans >= 6} onClick=${() => deal(g.mulligans + 1)}>Mulligan</button>`
+          : html`<button class="btn" onClick=${nextTurn} disabled=${!g.library.length}>Next turn (draw)</button>`}
+          <button class="btn ghost" onClick=${() => deal(0)}>New hand</button>
+        </div>`}
+      <div class="odds">
+        <h3>The odds</h3>
+        <p class="small">Lands in your opening 7 (${L} lands in ${N} cards). A hand with 2 to 5 lands is usually a keep: <b>${pct(keepable)}</b> of hands.</p>
+        <div class="land-odds" aria-label="Chance of each number of lands in your opening hand">${pmf.map((p, k) => html`<div class="lo-col"><span class="lo-p">${pct(p)}</span><span class="lo-bar" style=${`height:${Math.round((p / Math.max(...pmf, 0.01)) * 90)}px`}></span><span class="lo-k">${k} land${k === 1 ? '' : 's'}</span></div>`)}</div>
+        <p class="small">Chance of hitting every land drop ${onPlay ? 'on the play' : 'on the draw'}:
+          ${[1, 2, 3, 4, 5].map((t) => html` turn ${t} <b>${pct(atLeast(N, L, seen(t), t))}</b>${t < 5 ? ',' : '.'}`)}</p>
+        <div class="fld"><label for="mtgodd">Chance of drawing a card</label>
+          <select id="mtgodd" value=${pick} onChange=${(e) => setPick(e.target.value)}><option value="">Pick a card…</option>${names.map((n) => html`<option value=${n}>${n}</option>`)}</select></div>
+        ${pick && html`<ul class="small odds-list">
+          <li>In your opening hand: <b>${pct(atLeastOne(N, copies, 7))}</b></li>
+          <li>By turn 2: <b>${pct(atLeastOne(N, copies, seen(2)))}</b> ${onPlay ? 'on the play' : 'on the draw'}</li>
+          <li>By turn 3: <b>${pct(atLeastOne(N, copies, seen(3)))}</b></li>
+          <li>By turn 4: <b>${pct(atLeastOne(N, copies, seen(4)))}</b></li>
+        </ul>
+        <p class="small muted">With ${copies} cop${copies === 1 ? 'y' : 'ies'} in ${N} cards, before any card draw, scry or search.</p>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- Magic: deck checkup ---------- */
+const BASIC_TYPES = { Plains: 'W', Island: 'U', Swamp: 'B', Mountain: 'R', Forest: 'G' };
+// Which colors a land can make: basic land types, "Add {R}" text, "any color", and fetch lands.
+function landColors(c) {
+  const out = new Set(), t = c.typeLine || '', o = c.oracle || '';
+  for (const [type, col] of Object.entries(BASIC_TYPES)) if (new RegExp(`\\b${type}\\b`).test(t)) out.add(col);
+  for (const m of o.matchAll(/[Aa]dd ([^.]*)/g)) for (const sym of m[1].matchAll(/\{([WUBRG])\}/g)) out.add(sym[1]);
+  if (/mana of any (one )?color|any color/i.test(o)) 'WUBRG'.split('').forEach((x) => out.add(x));
+  // Fetch lands: "Search your library for a Mountain or Forest card" (those colors), or "a basic land card" (any color).
+  const fetch = o.match(/[Ss]earch your library for an? ([^.]*?) card/);
+  if (fetch) {
+    const types = Object.entries(BASIC_TYPES).filter(([type]) => fetch[1].includes(type));
+    if (types.length) types.forEach(([, col]) => out.add(col));
+    else if (/basic land/.test(fetch[1])) 'WUBRG'.split('').forEach((x) => out.add(x));
+  }
+  return out;
+}
+function mtgChecks(deck, format) {
+  const main = deck.entries || [], side = deck.side || [];
+  const total = main.reduce((n, e) => n + e.count, 0), sideTotal = side.reduce((n, e) => n + e.count, 0);
+  const lands = main.filter((e) => isLand(e.card)), spells = main.filter((e) => !isLand(e.card));
+  const L = lands.reduce((n, e) => n + e.count, 0), S = spells.reduce((n, e) => n + e.count, 0);
+  const avg = S ? spells.reduce((n, e) => n + (e.card.cmc || 0) * e.count, 0) / S : 0;
+  const checks = [], add = (ok, title, detail) => checks.push({ ok, title, detail });
+  add(total >= 60, `${total} cards in the main deck`, total >= 60 ? (total > 60 ? 'Legal, but most decks play exactly 60 so their best cards show up more often.' : 'Exactly 60, the usual number.') : `Constructed decks need at least 60 (${60 - total} more).`);
+  // Land count suggestion from the average mana value of the spells.
+  const [lo, hi] = avg <= 1.6 ? [17, 20] : avg <= 2.2 ? [20, 23] : avg <= 3 ? [23, 25] : [24, 27];
+  add(L >= lo && L <= hi, `${L} lands, average spell mana value ${avg.toFixed(2)}`, L < lo ? `For this curve, ${lo} to ${hi} lands is typical. With ${L}, you’ll miss land drops more often (Test draw shows the odds).` : L > hi ? `For this curve, ${lo} to ${hi} lands is typical. With ${L}, you may flood; lands that do something (like creature lands) help.` : `Right in the usual range (${lo} to ${hi}) for this curve.`);
+  const early = spells.filter((e) => (e.card.cmc || 0) <= 2).reduce((n, e) => n + e.count, 0);
+  const top = spells.filter((e) => (e.card.cmc || 0) >= 5).reduce((n, e) => n + e.count, 0);
+  add(early >= 8 || avg > 3, `${early} spells costing 2 or less, ${top} costing 5 or more`, early < 8 && avg <= 3 ? 'Few cheap plays: you might not do much in the first turns.' : top > 8 && L < 24 ? 'Lots of expensive cards for this land count.' : 'A reasonable spread across the curve.');
+  // Color sources: how many lands can make each color the spells need.
+  const pips = {}, earlyColors = new Set();
+  for (const e of spells) for (const m of String(e.card.manaCost || '').matchAll(/\{([^}]+)\}/g)) for (const col of m[1].split('/')) if ('WUBRG'.includes(col)) { pips[col] = (pips[col] || 0) + e.count; if ((e.card.cmc || 0) <= 2) earlyColors.add(col); }
+  const sources = {};
+  for (const e of lands) for (const col of landColors(e.card)) sources[col] = (sources[col] || 0) + e.count;
+  for (const col of Object.keys(pips).sort((a, b) => pips[b] - pips[a])) {
+    const need = earlyColors.has(col) ? 13 : 9, have = sources[col] || 0;
+    add(have >= need, `${MTG_COLOR_NAMES[col]}: ${have} land${have === 1 ? '' : 's'} can make it`, have >= need ? `Enough to cast your ${MTG_COLOR_NAMES[col].toLowerCase()} spells on time.` : `Your ${MTG_COLOR_NAMES[col].toLowerCase()} spells${earlyColors.has(col) ? ', including cheap ones,' : ''} want about ${need} or more sources. Dual lands or fetch lands that make ${MTG_COLOR_NAMES[col].toLowerCase()} would help.`);
+  }
+  const textHas = (re) => spells.filter((e) => re.test(e.card.oracle || '')).reduce((n, e) => n + e.count, 0);
+  const interaction = textHas(/destroy target|exile target|counter target|deals? \d+ damage to (any target|target creature)|target creature gets -\d|fights? target|return target (creature|nonland permanent).*to its owner's hand|each opponent sacrifices/i);
+  add(interaction >= 6 || format === 'casual', `${interaction} interaction spells`, interaction >= 6 ? 'Good: plenty of ways to deal with the other player’s threats.' : 'Removal and counterspells keep you from falling behind; most competitive decks play 6 or more (aggro decks can play fewer).');
+  const draw = textHas(/draw (a|two|three|\w+) cards?|draws? cards?/i);
+  add(true, `${draw} card-draw spells`, draw ? 'Ways to refill your hand in longer games.' : 'No card draw. That’s normal for fast aggro decks; slower decks usually want some.');
+  if (format !== 'casual') add(sideTotal >= 10 && sideTotal <= 15, `${sideTotal} sideboard cards`, sideTotal > 15 ? 'The sideboard can have at most 15 cards.' : sideTotal < 10 ? 'Tournament decks usually have a full 15-card sideboard for bad matchups. The coach can suggest one.' : 'A sideboard ready for tough matchups.');
+  return checks;
+}
+function MtgCheckup({ deck, format, onAsk, onClose }) {
+  useEscape(onClose);
+  const checks = useMemo(() => mtgChecks(deck, format), [deck, format]);
+  const warnings = checks.filter((c) => !c.ok).length;
+  const fmt = formatLabel('mtg', format);
+  const prompt = `Please give "${deck.name}" a full checkup for ${fmt}. Look at the deck's plan, mana curve, land count, mana base and color sources, interaction, card advantage, and the sideboard. Explain what's strong and what's weak, then suggest specific changes as a mix of cards from my Card Library and cards worth picking up.`;
+  return html`<div class="scrim" onClick=${onClose}>
+    <div class="modal tester" role="dialog" aria-modal="true" aria-label="Deck checkup" onClick=${(e) => e.stopPropagation()}>
+      <div class="tester-head"><h2>Deck checkup</h2><button class="btn ghost small" onClick=${onClose}>Close</button></div>
+      <p class="small">${warnings ? `${warnings} thing${warnings === 1 ? '' : 's'} to look at.` : 'Everything here looks good.'} These are rule-of-thumb checks; good decks sometimes break them on purpose.</p>
+      <ul class="checks">${checks.map((c) => html`<li class=${c.ok ? 'ok' : 'warn'}><span class="check-icon" aria-hidden="true">${c.ok ? '✓' : '!'}</span>
+        <div><strong>${c.title}</strong><p class="small">${c.detail}</p></div></li>`)}</ul>
+      <div class="row"><button class="btn" onClick=${() => onAsk(prompt)}>Ask the coach for a full checkup</button></div>
+    </div>
+  </div>`;
+}
+
 /* ---------- Scan cards into the Card Library ---------- */
-function ScanCards({ collection, onAdd, onOpen }) {
+function ScanCards({ collection, onAdd, onOpen, game = 'pokemon' }) {
   const fileRef = useRef(null);
   const [picking, setPicking] = useState(null); // index of the row being changed
   const [st, setSt] = useState({ busy: false, error: null, rows: null, msg: '' });
@@ -2242,9 +2438,9 @@ function ScanCards({ collection, onAdd, onOpen }) {
     if (!file) return;
     setSt({ busy: true, error: null, rows: null, msg: '' });
     try {
-      const found = await scanCardPhoto(file);
+      const found = await scanCardPhoto(file, game);
       if (!found.length) throw new Error('No cards found in that photo. Try a closer shot in good light, with the bottom of each card visible.');
-      const resolved = await resolveLines(found.map((c) => ({ ...c, raw: `${c.count} ${c.name} ${c.setCode} ${c.number}`.trim() })));
+      const resolved = await resolveLines(found.map((c) => ({ ...c, raw: `${c.count} ${c.name} ${c.setCode} ${c.number}`.trim() })), game);
       setSt({ busy: false, error: null, msg: '', rows: resolved.map((r) => ({ ...r, include: !!r.card })) });
     } catch (e) { setSt({ busy: false, error: e.message, rows: null, msg: '' }); }
   }
@@ -2282,7 +2478,7 @@ function ScanCards({ collection, onAdd, onOpen }) {
       </div>`)}
       <button class="btn" disabled=${!chosen.length} onClick=${addAll}>Add ${chosen.reduce((n, r) => n + r.count, 0)} cards to library</button>
     </div>`}
-    ${picking != null && st.rows?.[picking] && html`<${VersionPicker} name=${st.rows[picking].card?.name || st.rows[picking].name} currentId=${st.rows[picking].card?.id}
+    ${picking != null && st.rows?.[picking] && html`<${VersionPicker} game=${game} name=${st.rows[picking].card?.name || st.rows[picking].name} currentId=${st.rows[picking].card?.id}
       onClose=${() => setPicking(null)} onPick=${(c) => { update(picking, { card: c, include: true }); setPicking(null); }} />`}
   </div>`;
 }
@@ -2455,10 +2651,69 @@ function SetChecklist({ collection, store, onOpen }) {
   </div>`;
 }
 
+// Magic sets from Scryfall: paper expansions, core sets and Masters sets, newest first.
+let mtgSetsCache = null;
+async function mtgSets() {
+  if (mtgSetsCache) return mtgSetsCache;
+  const d = await scry('/sets');
+  const keep = new Set(['core', 'expansion', 'masters', 'draft_innovation']);
+  mtgSetsCache = (d?.data || []).filter((x) => keep.has(x.set_type) && !x.digital && x.card_count > 0 && x.released_at && x.released_at <= new Date().toISOString().slice(0, 10))
+    .map((x) => ({ id: x.code, code: x.code.toUpperCase(), name: x.name, date: x.released_at, count: x.card_count }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  return mtgSetsCache;
+}
+function MtgSetChecklist({ collection, store, onOpen }) {
+  const [setId, setSetId] = usePref('db.checklistSet.mtg', '');
+  const [missingOnly, setMissingOnly] = useState(false);
+  const [sets, setSets] = useState([]);
+  const [st, setSt] = useState({ busy: false, cards: [], error: null });
+  useEffect(() => { mtgSets().then(setSets).catch((e) => setSt((x) => ({ ...x, error: e.message }))); }, []);
+  useEffect(() => {
+    if (!setId) return;
+    let live = true;
+    (async () => {
+      setSt({ busy: true, cards: [], error: null });
+      try {
+        const cards = [];
+        let url = `/cards/search?q=${encodeURIComponent(`e:${setId} is:booster`)}&unique=prints&order=set`;
+        for (let page = 0; url && page < 6; page++) { const d = await scry(url); if (!d) break; cards.push(...d.data.map(slimMtgCard)); url = d.has_more ? d.next_page : null; }
+        if (!cards.length) { // some sets have no "booster" marking; fall back to every card in the set
+          let u2 = `/cards/search?q=${encodeURIComponent(`e:${setId}`)}&unique=prints&order=set`;
+          for (let page = 0; u2 && page < 6; page++) { const d = await scry(u2); if (!d) break; cards.push(...d.data.map(slimMtgCard)); u2 = d.has_more ? d.next_page : null; }
+        }
+        cards.sort((a, b) => numKey(a.number).localeCompare(numKey(b.number)));
+        if (live) setSt({ busy: false, cards, error: null });
+      } catch (e) { if (live) setSt({ busy: false, cards: [], error: e.message }); }
+    })();
+    return () => { live = false; };
+  }, [setId]);
+  const have = st.cards.filter((c) => (collection[c.id]?.count || 0) > 0).length;
+  const shown = missingOnly ? st.cards.filter((c) => !(collection[c.id]?.count > 0)) : st.cards;
+  return html`<div class="checklist">
+    <div class="searchbar">
+      <select value=${setId} onChange=${(e) => setSetId(e.target.value)} aria-label="Choose a set">
+        <option value="">${sets.length ? 'Choose a set…' : 'Loading sets…'}</option>
+        ${sets.map((x) => html`<option value=${x.id}>${x.code} · ${x.name} (${x.date.slice(0, 4)})</option>`)}
+      </select>
+      <label class="check"><input type="checkbox" checked=${missingOnly} onChange=${(e) => setMissingOnly(e.target.checked)} /> Only cards I don’t have</label>
+    </div>
+    ${st.error && html`<p class="warn small">${st.error}</p>`}
+    ${st.busy && html`<p class="small muted">Loading the set…</p>`}
+    ${setId && !st.busy && st.cards.length > 0 && html`<div class="progress"><div class="progress-bar"><span style=${`width:${Math.round((have / st.cards.length) * 100)}%`}></span></div>
+      <span class="small">You have <b>${have}</b> of ${st.cards.length} cards in this set (${Math.round((have / st.cards.length) * 100)}%). Exact printings only.</span></div>`}
+    <div class="grid wide">${shown.map((c) => { const n = collection[c.id]?.count || 0; return html`<div class=${`check-tile ${n ? '' : 'missing'}`} key=${c.id}>
+      <${CardTile} card=${c} count=${n || null} onOpen=${onOpen} />
+      <div class="tile-actions"><button class="mini ghost" disabled=${!n} onClick=${() => store.setOwned(c, n - 1)} aria-label=${`One fewer ${c.name}`}>−</button>
+        <span class="small check-num">${c.number}</span>
+        <button class="mini" onClick=${() => store.setOwned(c, n + 1)} aria-label=${`One more ${c.name}`}>+</button></div>
+    </div>`; })}</div>
+  </div>`;
+}
+
 function CollectionView({ collection, store, onOpen, game = 'pokemon' }) {
   const mtg = game === 'mtg';
   const [viewPref, setView] = usePref('db.libraryView', 'cards');
-  const view = mtg ? 'cards' : viewPref; // set checklists for Magic come in a later update
+  const view = viewPref;
   const blank = mtg ? () => blankMtgFilters('any') : () => ({ ...blankFilters('any'), sort: 'name' });
   const [f, setF] = usePref(mtg ? 'db.libraryFilters.mtg' : 'db.libraryFilters', blank());
   const filters = { ...blank(), ...f };
@@ -2497,11 +2752,11 @@ function CollectionView({ collection, store, onOpen, game = 'pokemon' }) {
     r.readAsText(file);
   }
   return html`<section class="collection">
-    ${!mtg && html`<div class="seg" role="tablist" aria-label="Library view">
+    ${html`<div class="seg" role="tablist" aria-label="Library view">
       <button role="tab" aria-selected=${view === 'cards'} class=${view === 'cards' ? 'on' : ''} onClick=${() => setView('cards')}>My cards</button>
       <button role="tab" aria-selected=${view === 'checklist'} class=${view === 'checklist' ? 'on' : ''} onClick=${() => setView('checklist')}>Set checklists</button>
     </div>`}
-    ${view === 'checklist' ? html`<${SetChecklist} collection=${collection} store=${store} onOpen=${onOpen} />` : html`
+    ${view === 'checklist' ? (mtg ? html`<${MtgSetChecklist} collection=${collection} store=${store} onOpen=${onOpen} />` : html`<${SetChecklist} collection=${collection} store=${store} onOpen=${onOpen} />`) : html`
     <div class="statbar">
       <div class="count60"><b>${total}</b><span>cards in your library</span></div>
       <div class="row end">
@@ -2510,7 +2765,7 @@ function CollectionView({ collection, store, onOpen, game = 'pokemon' }) {
         <input ref=${fileRef} type="file" accept="application/json" hidden onChange=${(e) => { e.target.files[0] && restore(e.target.files[0]); e.target.value = ''; }} />
       </div>
     </div>
-    ${!mtg && html`<${ScanCards} collection=${collection} onAdd=${importItems} onOpen=${onOpen} />`}
+    <${ScanCards} game=${game} collection=${collection} onAdd=${importItems} onOpen=${onOpen} />
     <${ImportBox} title="Add cards to your library" game=${game}
       hint=${mtg ? 'Paste a list like “4 Lightning Bolt” or “4 Lightning Bolt (2X2) 117” (sideboard cards are added too). Use Find cards to add one at a time.' : 'Paste a list in the same format as a decklist (count, name, set code, number). Use Find cards to add one at a time.'}
       actions=${[{ mode: 'add', label: 'Add to library', primary: true }]} onDone=${importItems} />

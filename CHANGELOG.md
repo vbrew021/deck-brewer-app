@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.13.0 (October 10, 2026)
+- Added for Magic: Test draw with the London mulligan (choose the cards to put
+  on the bottom), on the play or on the draw, drawing turn by turn. The odds
+  show the chance of each land count in your opening hand, hitting each land
+  drop through turn 5, and drawing any card by turns 2 to 4.
+- Added for Magic: Checkup. Main deck size, land count for your curve, curve
+  shape, color sources for each color (shock, fetch and "any color" lands
+  understood), interaction, card draw and sideboard, plus a full coach review.
+- Added for Magic: Matchups against the top decks in your format on
+  MTGGoldfish and MTGTop8, a named deck, or your own decks, with sideboard
+  plans.
+- Added for Magic: Scan cards, Set checklists (paper sets from Scryfall),
+  deck image with a sideboard section, and a printable decklist with main
+  deck and sideboard.
+- Fixed: the header could overlap (format menu over Delete) on screens
+  between about 1160 and 1340 pixels wide; it now switches to two lines there.
+- No Firebase changes needed.
+
 ## 1.12.3 (October 10, 2026)
 - Fixed: the header changed shape between Pokémon and Magic. Long deck names
   pushed buttons onto a second line; now the header keeps the same one-line

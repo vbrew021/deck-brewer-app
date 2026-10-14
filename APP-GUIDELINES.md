@@ -26,6 +26,15 @@ to follow it.
   `settings/coach-mtg`). Magic suggestions may set `board: 'side'`.
 - The user plays Modern, Pioneer and casual (Standard supported); not
   Commander, so there are no Commander rules.
+- Magic versions of the deck tools: `MtgDrawTester` (London mulligan, play or
+  draw, `hyperPmf()` / `atLeast()` land odds), `mtgChecks()` / `MtgCheckup`
+  (land count from average mana value, color sources via `landColors()`,
+  interaction and card draw by rules-text patterns), `Matchups` (prompts per
+  game), `scanCardPhoto(file, game)` with `SCAN_PROMPT_MTG`, `MtgSetChecklist`
+  (Scryfall paper sets), `drawDeckImage()` (sections per game plus sideboard)
+  and `printMtgDecklist()`.
+- Header: one line above 1340 px wide, then wraps in a fixed order. Check
+  for overlaps at many widths in both games after any header change.
 
 ## What the app is
 

@@ -174,7 +174,9 @@ key. Each game has its own decks, Card Library, want list and coach notes.
 Magic decks follow constructed rules (Standard, Pioneer and Modern): at least
 60 cards, up to 15 in the sideboard, and 4 copies at most across both (basic
 lands are unlimited). Casual skips legality checks. Decklists can be pasted
-from MTG Arena, MTGO, Moxfield or MTGGoldfish.
+from MTG Arena, MTGO, Moxfield or MTGGoldfish. Everything else works for Magic
+too: Test draw (London mulligan), Checkup, Matchups, Image & print, Scan cards
+and Set checklists.
 
 ## Copy for Claude
 
