@@ -1,4 +1,4 @@
-// Builds data/cards.json for Deck Brews from TCGdex (https://tcgdex.dev), a free, open-source card database.
+// Builds data/cards.json for TCG Deck Brewer from TCGdex (https://tcgdex.dev), a free, open-source card database.
 // Run by the "Update card data" GitHub Action every week, or by hand with: node scripts/build-cards.mjs
 //
 // What it does:

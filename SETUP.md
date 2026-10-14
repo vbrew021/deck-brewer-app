@@ -1,21 +1,21 @@
-# Deck Brews setup
+# TCG Deck Brewer setup
 
-Deck Brews runs on GitHub Pages and keeps your decks and cards in Firebase,
+TCG Deck Brewer runs on GitHub Pages and keeps your decks and cards in Firebase,
 so everyone in the family sees the same decks and cards on every device.
 Everything here is free: no credit card, no API keys to buy.
 
-(The app was first called Deck Brewer. If your repository or Firebase project
-uses that name, keep it; the names are just labels. The Firestore data path
+(The app was first called Deck Brewer, then Deck Brews. If your repository or
+Firebase project uses an older name, keep it; the names are just labels. The Firestore data path
 stays `deckbrewer` on purpose, so don't change it in the rules.) Card data and
 images come from TCGdex (https://tcgdex.dev), a free, open-source card
 database that needs no sign-up.
 
 ## 1. Create a Firebase project (about 5 minutes)
 
-A new project keeps Deck Brews' rules separate from anything else you run.
+A new project keeps TCG Deck Brewer's rules separate from anything else you run.
 
 1. Go to https://console.firebase.google.com and click **Create a project**.
-   Name it something like "deck-brews". Google Analytics isn't needed.
+   Name it something like "tcg-deck-brewer". Google Analytics isn't needed.
 2. Open **Build → Firestore Database → Create database**. Pick a location
    near you (us-central is fine) and start in **production mode**.
 3. Open the **Rules** tab. Select everything, delete it, and paste in the
@@ -54,7 +54,7 @@ Nobody ever has to solve a puzzle.
 **Create a reCAPTCHA key**
 
 4. Go to https://www.google.com/recaptcha/admin/create.
-   - Label: "Deck Brews"
+   - Label: "TCG Deck Brewer"
    - Type: **Score based (v3)**
    - Domains: `YOUR-NAME.github.io` (your GitHub username; see step 3)
    - If Google asks for a Google Cloud project, pick your Firebase project.
@@ -96,13 +96,13 @@ Good to know:
 
 ## 3. Put it on GitHub Pages
 
-1. Create a new repository on GitHub (for example `deck-brews`). Public is
+1. Create a new repository on GitHub (for example `tcg-deck-brewer`). Public is
    fine; nothing secret is in these files.
 2. Upload `index.html`, `firebase-config.js`, `firestore.rules`, `SETUP.md`,
    `CHANGELOG.md` and `APP-GUIDELINES.md`.
 3. Open **Settings → Pages**. Under **Branch**, choose `main` and `/ (root)`,
    then **Save**. After a minute your site is at
-   `https://YOUR-NAME.github.io/deck-brews/`.
+   `https://YOUR-NAME.github.io/tcg-deck-brewer/`.
 
 ## 4. First visit on each device
 
@@ -151,7 +151,7 @@ Good to know:
 
 ## 6. Put it on your home screen (optional)
 
-Deck Brews can sit on your phone or tablet's home screen with its own icon
+TCG Deck Brewer can sit on your phone or tablet's home screen with its own icon
 and open full screen, like a regular app. Make sure `manifest.webmanifest`
 and the `icons` folder are uploaded to your repository first.
 
@@ -160,9 +160,21 @@ and the `icons` folder are uploaded to your repository first.
 - **Android (Chrome):** open the site, tap the **⋮** menu, then **Add to
   Home screen** or **Install app**.
 - **Computer (Chrome or Edge):** click the install icon at the right end of
-  the address bar, or the menu's **Install Deck Brews** option.
+  the address bar, or the menu's **Install TCG Deck Brewer** option.
 
 It always loads the latest version from GitHub, so updates work the same way.
+
+## Magic: The Gathering
+
+There's nothing to set up for Magic. Use the **Pokémon | Magic** switch at
+the top of the app. Magic card data, pictures and prices come from Scryfall
+(https://scryfall.com), a free Magic card database that needs no account or
+key. Each game has its own decks, Card Library, want list and coach notes.
+
+Magic decks follow constructed rules (Standard, Pioneer and Modern): at least
+60 cards, up to 15 in the sideboard, and 4 copies at most across both (basic
+lands are unlimited). Casual skips legality checks. Decklists can be pasted
+from MTG Arena, MTGO, Moxfield or MTGGoldfish.
 
 ## Copy for Claude
 

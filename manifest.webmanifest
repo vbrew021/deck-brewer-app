@@ -1,6 +1,6 @@
 {
-  "name": "Deck Brews",
-  "short_name": "Deck Brews",
+  "name": "TCG Deck Brewer",
+  "short_name": "Deck Brewer",
   "description": "Build Pokémon TCG decks from your Card Library, with a deck coach.",
   "start_url": "./",
   "scope": "./",

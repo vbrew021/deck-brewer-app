@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.12.0 (October 10, 2026)
+- Added: Magic: The Gathering. A Pokémon | Magic switch in the header gives
+  each game its own decks, Card Library, want list, coach notes and format.
+- Magic card search, pictures, legality and prices come from Scryfall (free,
+  no key). Find cards and Card Library have Magic filters: card text, type,
+  subtype, colors (including, exactly, at most), mana value, set, rarity,
+  artist, format legality, sorting, and every printing.
+- Magic decks: Creatures, Planeswalkers, Battles, Instants, Sorceries,
+  Artifacts, Enchantments and Lands sections, a sideboard (up to 15), a mana
+  curve, and checks for 60+ cards, 4 copies across main and sideboard (basic
+  lands exempt) and Standard, Pioneer or Modern legality (banned cards
+  flagged). Basic lands aren't counted as cards you're missing.
+- Decklist import and Copy list for MTG Arena, MTGO, Moxfield and MTGGoldfish
+  formats, including sideboards and double-faced cards.
+- Card details show mana symbols, type line, rules text, power/toughness or
+  loyalty, legality in each format, and prices, with Other versions.
+- The coach has Magic instructions (Modern, Pioneer, Standard, Casual; not
+  Commander), looks up lists on MTGGoldfish, MTGTop8 and Moxfield when needed,
+  and can add suggestions straight to the sideboard.
+- Card Library backups now save and restore one game at a time.
+- Still Pokémon-only for now: Test draw, Checkup, Matchups, Image & print,
+  Scan cards and Set checklists (Magic versions are coming next).
+- No Firebase changes needed.
+
+## 1.11.3 (October 10, 2026)
+- Changed: renamed the app to TCG Deck Brewer ("Deck Brewer" under the
+  home-screen icon). Saved data stays under the `deckbrewer` path.
+- No Firebase changes needed.
+
 ## 1.11.2 (October 10, 2026)
 - Changed: the "Search the web" checkbox is now a Web search setting: When
   needed (new default), Always, or Off. With When needed, the coach answers

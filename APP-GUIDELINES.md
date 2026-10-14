@@ -1,8 +1,31 @@
-# Deck Brews: guidelines for future changes
+# TCG Deck Brewer: guidelines for future changes
 
 Attach this file with the current `index.html` (and `firestore.rules` if
 Firebase might change) when starting a new chat about the app, and ask Claude
 to follow it.
+
+## Two games
+
+- The app supports Pokémon TCG and Magic: The Gathering. `game` ('pokemon' |
+  'mtg') is a per-device setting with a header switch. Decks carry
+  `game` (missing means Pokémon); cards carry `game: 'mtg'` for Magic
+  (missing means Pokémon). `gameOf()` and `isMtg()` read these.
+- The App filters decks, Card Library and wants to the current game before
+  passing them to any screen, so screens only see one game's data. Formats,
+  active deck, search and library filters are remembered per game.
+- Magic cards come from Scryfall (`scry()`, spaced about 110 ms apart as
+  Scryfall asks). `slimMtgCard()` keeps the shared card fields (arrays like
+  `attacks` stay empty) so common code works. Lookups dispatch by game:
+  `resolveLines(lines, game)`, `findByName(name, game)`,
+  `findVersions(name, game)`, and `fetchPrices(card)`.
+- Magic decks have `side` (sideboard) next to `entries`. `deckStats()` and
+  `exportDeck()` pick the right rules and decklist format for the game.
+  `printKey()` is the oracle id for Magic, so reprints count together.
+- The coach uses `SYSTEM` (Pokémon) or `SYSTEM_MTG` (Magic); both end with
+  `SHARED_COACH_RULES`. Coach notes are per game (`settings/coach` and
+  `settings/coach-mtg`). Magic suggestions may set `board: 'side'`.
+- The user plays Modern, Pioneer and casual (Standard supported); not
+  Commander, so there are no Commander rules.
 
 ## What the app is
 
@@ -18,7 +41,7 @@ an AI coach to find substitutes and understand the deck.
   site key, and the Gemini model name. index.html imports it with
   `import * as cfg` so older config files without newer lines still load.
 - Shared data in Firestore under `deckbrewer/{familyCode}/` (the app's
-  original name, Deck Brewer; never rename this path or existing data is lost). The code is
+  original name, Deck Brewer; now TCG Deck Brewer; never rename this path or existing data is lost). The code is
   entered on the first visit, lowercased, and checked by `firestore.rules`.
 - Saved card data: `.github/workflows/update-cards.yml` runs
   `scripts/build-cards.mjs` weekly (and on demand) to write `data/cards.json`:
@@ -178,5 +201,6 @@ an AI coach to find substitutes and understand the deck.
 - `customCards/{id}`: family-added extra cards (ids start with `custom-`).
 - `wants/{cardId}`: `{ card, count }`, cards the family added to the want list
   by hand (deck needs are calculated, not stored).
-- `settings/coach`: `{ notes, updatedAt }`, the shared coach notes (up to
-  1,500 characters), sent with every coach question.
+- `settings/coach` and `settings/coach-mtg`: `{ notes, updatedAt }`, the
+  shared coach notes for each game (up to 1,500 characters), sent with every
+  coach question for that game.
