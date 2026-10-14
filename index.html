@@ -129,13 +129,27 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; letter-sp
 
 /* Header */
 .app { max-width: 1440px; margin: 0 auto; padding: 16px 20px 40px; }
-.top { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-.brand { font-family: var(--display); font-weight: 800; font-size: 24px; }
-.deckpick { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; flex: 1; }
+.top { display: flex; gap: 12px; align-items: center; flex-wrap: nowrap; min-height: 56px; }
+.brand { font-family: var(--display); font-weight: 800; font-size: 24px; white-space: nowrap; }
+/* The deck controls stay on one line in both games; long deck names are trimmed with "…". */
+.deckpick { display: flex; gap: 8px; flex-wrap: nowrap; align-items: center; flex: 1 1 auto; min-width: 0; }
+.deckpick select { flex: 0 1 220px; min-width: 120px; max-width: 220px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+.deckpick button, .top > button, .top > select { flex: none; white-space: nowrap; }
 .deckpick select, .deckpick input, .format, .searchbar input, .searchbar select {
   background: var(--paper); border: 1.5px solid var(--line); border-radius: var(--r-sm); padding: 7px 10px;
 }
-.deckpick input { font-weight: 600; min-width: 180px; }
+.deckpick input { font-weight: 600; flex: 0 1 240px; min-width: 120px; max-width: 240px; text-overflow: ellipsis; }
+.top > .format { width: 190px; }
+/* On narrower screens the header wraps in a fixed order instead of shifting with the deck name. */
+@media (max-width: 1100px) {
+  .top { flex-wrap: wrap; }
+  .deckpick { order: 5; flex-basis: 100%; }
+  .top .gear { margin-left: auto; }
+}
+@media (max-width: 640px) {
+  .deckpick { flex-wrap: wrap; }
+  .deckpick select, .deckpick input { flex: 1 1 100%; max-width: none; }
+}
 .tabs { display: flex; gap: 4px; margin: 18px 0 14px; border-bottom: 2px solid var(--line); }
 .tabs button { background: none; border: 0; padding: 10px 16px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
 .tabs button.on { color: var(--ink); border-color: var(--binder); }
@@ -334,6 +348,7 @@ img.sym { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px;
 .color-chip.on { border-color: var(--trainer); color: var(--trainer); font-weight: 600; }
 .err-detail { margin-top: 4px; }
 .err-detail code { display: block; white-space: pre-wrap; word-break: break-word; font-size: 11px; color: var(--muted); margin: 4px 0; }
+.notice { margin: 6px 0 0; }
 .chat-note { text-align: center; font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
 .thinking { color: var(--muted); font-style: italic; }
 .suggest { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -385,7 +400,7 @@ img.sym { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px;
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.12.2';
+const VERSION = '1.12.3';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -2856,7 +2871,8 @@ function App() {
     const legacy = {};
     for (const e of Object.values(data.collection)) if (isLegacyCard(e.card)) legacy[e.card.id] = e.card;
     for (const d of Object.values(data.decks)) for (const e of d.entries) if (isLegacyCard(e.card)) legacy[e.card.id] = e.card;
-    const list = Object.values(legacy);
+    const skip = new Set(load('db.unmatchedLegacy', []));
+    const list = Object.values(legacy).filter((c) => !skip.has(c.id));
     upgradeTried.current = true;
     if (!list.length) return;
     setUpgrade(`Updating ${list.length} saved card${list.length === 1 ? '' : 's'} to the new card database…`);
@@ -2878,7 +2894,10 @@ function App() {
           await store.saveDeck({ ...d, entries: [...m.values()], updatedAt: Date.now() });
         }
         const missed = list.length - Object.keys(map).length;
-        setUpgrade(missed ? `Updated your saved cards. ${missed} couldn’t be matched and still use their old pictures.` : null);
+        // Remember cards that can't be matched, so the app doesn't retry (and show this note) on every visit.
+        const unmatched = list.filter((c) => !map[c.id]).map((c) => c.id);
+        save('db.unmatchedLegacy', unmatched);
+        setUpgrade(missed && !load('db.upgradeNoteSeen', false) ? `Updated your saved cards. ${missed} couldn’t be matched and still use their old pictures.` : null);
       } catch { setUpgrade('Couldn’t update saved cards to the new card database right now. It will try again next time.'); upgradeTried.current = false; }
     })();
   }, [store, data.loaded]);
@@ -2966,10 +2985,10 @@ function App() {
           onClick=${() => { if (game !== k) { setGame(k); setModalCard(null); setNameDraft(null); } }}>${label}</button>`)}
       </div>
       <div class="deckpick">
-        <select value=${deck.id} onChange=${(e) => setActiveId(e.target.value)} aria-label="Choose a deck">
+        <select value=${deck.id} onChange=${(e) => setActiveId(e.target.value)} aria-label="Choose a deck" title=${deck.name}>
           ${decks.map((d) => html`<option value=${d.id}>${d.name}</option>`)}
         </select>
-        <input value=${nameDraft ?? deck.name} onInput=${(e) => setNameDraft(e.target.value)} onBlur=${commitName}
+        <input value=${nameDraft ?? deck.name} title=${deck.name} onInput=${(e) => setNameDraft(e.target.value)} onBlur=${commitName}
           onKeyDown=${(e) => e.key === 'Enter' && e.target.blur()} aria-label="Deck name" />
         <button class="btn ghost small" onClick=${newDeck}>New deck</button>
         <button class="btn ghost small" onClick=${copyDeck}>Copy deck</button>
@@ -2983,7 +3002,8 @@ function App() {
       <button class="btn ghost small" onClick=${() => setSettings(true)}>Settings</button>
     </header>
     ${syncErr && html`<p class="warn small">${syncErr}</p>`}
-    ${upgrade && html`<p class="muted small">${upgrade}</p>`}
+    ${upgrade && game === 'pokemon' && html`<p class="muted small notice">${upgrade}
+      <button class="linkbtn small" onClick=${() => { save('db.upgradeNoteSeen', true); setUpgrade(null); }}>Dismiss</button></p>`}
 
     <nav class="tabs" role="tablist">
       ${[['deck', 'Deck'], ['search', 'Find cards'], ['collection', 'Card Library'], ['wants', `Want list${wantCount ? ` (${wantCount})` : ''}`]].map(([k, label]) =>

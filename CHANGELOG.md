@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.12.3 (October 10, 2026)
+- Fixed: the header changed shape between Pokémon and Magic. Long deck names
+  pushed buttons onto a second line; now the header keeps the same one-line
+  layout in both games, long names are trimmed with "…" (hover to see the
+  full name), and narrow screens wrap in a fixed order.
+- Fixed: "Updated your saved cards. 2 couldn't be matched…" appeared on every
+  visit and in both games. It now shows once, only in Pokémon, with a Dismiss
+  button, and the app stops retrying cards it can't match.
+- No Firebase changes needed.
+
 ## 1.12.2 (October 10, 2026)
 - Fixed: when Google's servers were busy ("high demand", error 500), the
   coach gave up instead of trying another model. It now moves on to the next
