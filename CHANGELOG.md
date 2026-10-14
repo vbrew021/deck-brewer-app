@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.12.2 (October 10, 2026)
+- Fixed: when Google's servers were busy ("high demand", error 500), the
+  coach gave up instead of trying another model. It now moves on to the next
+  model, and says so if they're all busy (usually brief).
+- Changed: the coach always tries the Flash-Lite models first (about 500 free
+  requests a day each), even if firebase-config.js names a regular Flash
+  model (about 20 a day), which is then tried last.
+- No Firebase changes needed.
+
 ## 1.12.1 (October 10, 2026)
 - Fixed: the coach sometimes said it had "used up today's free requests" when
   the real problem was something else (for example Firebase blocking the

@@ -385,7 +385,7 @@ img.sym { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px;
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.12.1';
+const VERSION = '1.12.2';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -393,7 +393,10 @@ const COACH_READY = FIREBASE_READY && filled(cfg.recaptchaSiteKey);
 const GEMINI_MODEL = filled(cfg.geminiModel) ? cfg.geminiModel.trim() : 'gemini-3.5-flash-lite';
 // If a model is out of free requests (or retired), the coach moves down this list.
 // Flash-Lite models have a much bigger free allowance (about 500 a day) than standard Flash (about 20).
-const COACH_MODELS = [...new Set([GEMINI_MODEL, 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite'])];
+// Flash-Lite models come first: their free allowance is about 25 times bigger than regular Flash models.
+// A regular Flash model named in firebase-config.js is still used, after the Flash-Lite ones.
+const LITE_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite'];
+const COACH_MODELS = [...new Set(/lite/i.test(GEMINI_MODEL) ? [GEMINI_MODEL, ...LITE_MODELS] : [...LITE_MODELS, GEMINI_MODEL])];
 // Google's free tier only includes Google Search on the 2.5 models (about 500 searches a day), so web questions use these.
 const WEB_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash'];
 
@@ -1311,6 +1314,7 @@ async function scanCardPhoto(file) {
     catch (e) {
       lastError = e;
       if ((isQuotaError(e) && !isPerMinute(e)) || isMissingModel(e)) { markOut(name, isMissingModel(e) ? 0 : quotaLimitOf(e)); continue; }
+      if (isBusy(e)) continue;
       console.error(e); throw coachError(e);
     }
   }
@@ -1334,6 +1338,7 @@ function friendlyCoachError(e) {
     if (!limits.length && Object.keys(u.out).some((k) => !k.startsWith('web:'))) return 'None of the coach’s models answered today. Open Settings and tap “Try every model again”; if it keeps happening, check that geminiModel in firebase-config.js is a current Flash-Lite model.';
     return `The coach has used up today’s free requests on every model it can use${limits.length ? ` (Google’s limits: ${limits.join(', ')})` : ''}. They reset at midnight Pacific time. Until then, use Copy for Claude. Settings shows today’s usage.`;
   }
+  if (isBusy(e)) return 'Google’s AI servers are very busy right now, on every model the coach tried. This is usually brief, so try again in a minute or two (or use Copy for Claude).';
   if (isMissingModel(e)) return 'None of the coach’s models are available. Check that geminiModel in firebase-config.js is a current Flash-Lite model (see SETUP.md).';
   if (/network|failed to fetch|offline/.test(m)) return 'Couldn’t reach the coach. Check your internet connection and try again.';
   return 'The coach couldn’t answer. Try again, or use Copy for Claude.';
@@ -1358,6 +1363,8 @@ function salvageReply(text) {
 
 const isQuotaError = (e) => /quota|resource.?exhausted|\b429\b|rate.?limit|too many requests/i.test(`${e?.code || ''} ${e?.message || ''}`);
 const isPerMinute = (e) => /per.?minute|perminute|rpm/i.test(`${e?.message || ''}`);
+// Google's servers being temporarily busy ("high demand", 500/503): try another model, don't set this one aside.
+const isBusy = (e) => /high demand|overloaded|\b50[03]\b|unavailable|try again later|internal error/i.test(`${e?.code || ''} ${e?.message || ''}`);
 const isMissingModel = (e) => /not.?found|404|is not supported|unknown model/i.test(`${e?.code || ''} ${e?.message || ''}`);
 
 async function callCoach(contents, web = false, game = 'pokemon') {
@@ -1386,6 +1393,7 @@ async function callCoach(contents, web = false, game = 'pokemon') {
       lastError = e;
       if (!noThinking.has(name) && /thinking/i.test(e?.message || '')) { noThinking.add(name); i--; continue; }
       if ((isQuotaError(e) && !isPerMinute(e)) || isMissingModel(e)) { console.warn(`Coach model ${name} unavailable today`, e); markOut(name, isMissingModel(e) ? 0 : quotaLimitOf(e)); continue; }
+      if (isBusy(e)) { console.warn(`Coach model ${name} is busy, trying the next one`, e); continue; }
       throw e;
     }
   }
