@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.12.1 (October 10, 2026)
+- Fixed: the coach sometimes said it had "used up today's free requests" when
+  the real problem was something else (for example Firebase blocking the
+  request, or a model name Google didn't recognize). The check matched the
+  word "rate", which is inside "generateContent" in every Gemini error.
+- Coach errors now show the real reason, with a Details section (and Copy
+  details) showing Google's original message.
+- Added: "Try every model again" in Settings, for models the app set aside
+  for the day.
+- No Firebase changes needed.
+
 ## 1.12.0 (October 10, 2026)
 - Added: Magic: The Gathering. A Pokémon | Magic switch in the header gives
   each game its own decks, Card Library, want list, coach notes and format.

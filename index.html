@@ -332,6 +332,8 @@ img.sym { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px;
 .color-row { gap: 6px; }
 .color-chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 9px; border-radius: 99px; border: 1.5px solid var(--line); background: var(--paper); font-size: 13px; cursor: pointer; }
 .color-chip.on { border-color: var(--trainer); color: var(--trainer); font-weight: 600; }
+.err-detail { margin-top: 4px; }
+.err-detail code { display: block; white-space: pre-wrap; word-break: break-word; font-size: 11px; color: var(--muted); margin: 4px 0; }
 .chat-note { text-align: center; font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
 .thinking { color: var(--muted); font-style: italic; }
 .suggest { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -383,7 +385,7 @@ img.sym { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px;
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.12.0';
+const VERSION = '1.12.1';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -1309,10 +1311,10 @@ async function scanCardPhoto(file) {
     catch (e) {
       lastError = e;
       if ((isQuotaError(e) && !isPerMinute(e)) || isMissingModel(e)) { markOut(name, isMissingModel(e) ? 0 : quotaLimitOf(e)); continue; }
-      console.error(e); throw new Error(friendlyCoachError(e));
+      console.error(e); throw coachError(e);
     }
   }
-  if (!result) throw new Error(friendlyCoachError(lastError || Object.assign(new Error('resource exhausted'), { code: 'resource-exhausted' })));
+  if (!result) throw coachError(lastError || Object.assign(new Error('resource exhausted'), { code: 'resource-exhausted' }));
   let found = [];
   try { found = JSON.parse(result.response.text().replace(/^\s*```(?:json)?|```\s*$/g, '')).cards || []; }
   catch { throw new Error('The scan came back unreadable. Try again with a clearer, closer photo.'); }
@@ -1321,18 +1323,23 @@ async function scanCardPhoto(file) {
 
 function friendlyCoachError(e) {
   const m = `${e?.code || ''} ${e?.message || ''}`.toLowerCase();
-  if (/quota|resource.?exhausted|429|rate/.test(m)) {
+  // Checked first: blocked requests can mention other words below. (Note: "generateContent" contains "rate", so
+  // never match on a bare "rate"; that bug made other errors look like "used up" in 1.11.x and 1.12.0.)
+  if (/api.?not.?enabled|has not been used|is disabled|service_disabled/.test(m)) return 'AI Logic isn’t turned on for this Firebase project yet. See step 2 in SETUP.md.';
+  if (/app.?check|recaptcha|attestation|\b403\b|permission|unauthori[sz]ed|api key not valid|forbidden/.test(m)) return 'Firebase blocked the coach. Check the App Check and reCAPTCHA steps in SETUP.md, including your site’s address in the reCAPTCHA domains.';
+  if (isQuotaError(e)) {
     if (isPerMinute(e)) return 'The coach is getting questions too fast for the free plan. Wait a minute, then ask again.';
     const u = usageToday();
     const limits = Object.entries(u.out).filter(([k, v]) => !k.startsWith('web:') && v).map(([k, v]) => `${k}: ${v} a day`);
+    if (!limits.length && Object.keys(u.out).some((k) => !k.startsWith('web:'))) return 'None of the coach’s models answered today. Open Settings and tap “Try every model again”; if it keeps happening, check that geminiModel in firebase-config.js is a current Flash-Lite model.';
     return `The coach has used up today’s free requests on every model it can use${limits.length ? ` (Google’s limits: ${limits.join(', ')})` : ''}. They reset at midnight Pacific time. Until then, use Copy for Claude. Settings shows today’s usage.`;
   }
-  if (/app.?check|recaptcha|attestation|403|permission/.test(m)) return 'Firebase blocked the coach. Check the App Check and reCAPTCHA steps in SETUP.md, including your site’s address in the reCAPTCHA domains.';
-  if (/not.?found|404|model/.test(m)) return `None of the coach models are available right now. Update geminiModel in firebase-config.js to a current Flash-Lite model (see SETUP.md).`;
-  if (/api.?not.?enabled|ai logic|firebasevertexai|generativelanguage/.test(m)) return 'AI Logic isn’t turned on for this Firebase project yet. See step 2 in SETUP.md.';
-  if (/network|fetch|offline/.test(m)) return 'Couldn’t reach the coach. Check your internet connection and try again.';
+  if (isMissingModel(e)) return 'None of the coach’s models are available. Check that geminiModel in firebase-config.js is a current Flash-Lite model (see SETUP.md).';
+  if (/network|failed to fetch|offline/.test(m)) return 'Couldn’t reach the coach. Check your internet connection and try again.';
   return 'The coach couldn’t answer. Try again, or use Copy for Claude.';
 }
+// Keep Google's original error with the friendly message, so it can be shown under "Details".
+function coachError(e) { const err = new Error(friendlyCoachError(e)); err.detail = String(e?.message || e || '').slice(0, 600); return err; }
 
 // Pull the coach's JSON answer out of the response, even if it has stray text around it.
 function parseCoachJson(text) {
@@ -1349,7 +1356,7 @@ function salvageReply(text) {
   try { return JSON.parse(`"${m[1].replace(/\\$/, '')}"`); } catch { return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'); }
 }
 
-const isQuotaError = (e) => /quota|resource.?exhausted|429|rate.?limit/i.test(`${e?.code || ''} ${e?.message || ''}`);
+const isQuotaError = (e) => /quota|resource.?exhausted|\b429\b|rate.?limit|too many requests/i.test(`${e?.code || ''} ${e?.message || ''}`);
 const isPerMinute = (e) => /per.?minute|perminute|rpm/i.test(`${e?.message || ''}`);
 const isMissingModel = (e) => /not.?found|404|is not supported|unknown model/i.test(`${e?.code || ''} ${e?.message || ''}`);
 
@@ -1425,7 +1432,7 @@ async function askCoachOnce({ history, message, deck, collection, format, notes,
     const contents = attempt === 0 ? base : [...base.slice(0, -1), { role: 'user', parts: [{ text: base[base.length - 1].parts[0].text + '\n\n(Please keep this answer short: under 150 words, and at most 6 suggestions. Answer with only the JSON object.)' }] }];
     let res;
     try { res = await callCoach(contents, useWeb, gameOf(deck)); }
-    catch (e) { console.error(e); throw new Error(friendlyCoachError(e)); }
+    catch (e) { console.error(e); throw coachError(e); }
     const { result } = res;
     const extra = { ...groundingInfo(result), webNote: useWeb && !res.web ? 'Web search wasn’t available for this answer, so it’s from the coach’s own knowledge.' : '' };
     try { lastText = result.response.text(); } catch (e) { console.error('Coach response had no text', e, result?.response); lastText = ''; }
@@ -2627,7 +2634,7 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
       const remember = d.remember && !notes.toLowerCase().includes(d.remember.toLowerCase()) ? d.remember.slice(0, 200) : '';
       setMessages((m) => [...m, { role: 'assistant', text: d.reply, suggestions, remember, rememberState: remember ? 'ask' : '', lookedUp: !!d.lookedUp,
         searchHtml: d.searchHtml || '', sources: d.sources || [], webNote: d.webNote || '' }]);
-    } catch (e) { setError(e.message); setMessagesRaw((m) => m.slice(0, -1)); setInput(text); }
+    } catch (e) { setError({ text: e.message, detail: e.detail || '' }); setMessagesRaw((m) => m.slice(0, -1)); setInput(text); }
     finally { setBusy(false); }
   }
   const updateSugg = (mi, si, patch) =>
@@ -2692,7 +2699,9 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
         ${m.rememberState === 'saved' && html`<p class="small muted">Saved to coach notes.</p>`}
       </div>`)}
       ${busy && html`<div class="msg msg-coach thinking">Thinking it over…</div>`}
-      ${error && html`<p class="warn small">${error}</p>`}
+      ${error && html`<div class="warn small"><p style="margin:0">${error.text || error}</p>
+        ${error.detail && html`<details class="err-detail"><summary>Details</summary><code>${error.detail}</code>
+          <button class="linkbtn small" onClick=${() => navigator.clipboard?.writeText(error.detail)}>Copy details</button></details>`}</div>`}
     </div>
     <form class="composer" onSubmit=${(e) => { e.preventDefault(); send(input); }}>
       <textarea rows="3" value=${input} placeholder=${COACH_READY ? (mtgDeck ? 'Ask, or paste a list from MTGGoldfish…' : 'Ask, or paste a list from Limitless…') : 'Type a question for Claude…'} aria-label="Message the deck coach"
@@ -2715,11 +2724,13 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
 
 /* ---------- Settings and family code ---------- */
 function UsageNote() {
+  const [, bump] = useState(0);
   const u = usageToday();
   const by = Object.entries(u.models).map(([k, v]) => `${k} ${v}`).join(', ');
   const out = Object.entries(u.out).map(([k, v]) => `${k.replace(/^web:/, 'web search on ')}${v ? ` (limit ${v})` : ''}`);
   return html`<p class="small muted">Coach and scan requests from this device today: <b>${u.total}</b>${by ? ` (${by})` : ''}.
-    ${out.length ? ` Used up until midnight Pacific: ${out.join(', ')}.` : ''} Other devices share the same free limits.</p>`;
+    ${out.length ? ` Used up until midnight Pacific: ${out.join(', ')}.` : ''} Other devices share the same free limits.
+    ${out.length ? html` <button class="linkbtn small" onClick=${() => { save('db.usage', { ...u, out: {} }); bump((n) => n + 1); }}>Try every model again</button>` : ''}</p>`;
 }
 
 function Settings({ mode, notes, onSaveNotes, onClose, onDisconnect, theme, onTheme, localInfo, game = 'pokemon' }) {
