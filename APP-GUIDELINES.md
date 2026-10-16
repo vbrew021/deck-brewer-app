@@ -88,6 +88,19 @@ an AI coach to find substitutes and understand the deck.
   nothing matches exactly). `VersionPicker` is used by scan review rows and by
   the card details window, where `switchVersion()` moves deck and library
   copies to the chosen printing.
+- Card text for the coach: `cardSummary()` writes one line of official text
+  per card; `deckContext()` adds it for the deck (about 14,000 characters at
+  most) and for library Pokémon or Magic spells not in the deck (about 9,000).
+  `SHARED_COACH_RULES` tells the coach to base decisions on that text.
+- Pictures in the chat: `identifyPictureCards()` runs the scan prompt on each
+  image (`scanImageData()`), resolves the cards, and `pictureCardsText()` adds
+  their official text by picture. The user message shows `readCards`; saved
+  chats keep only their names.
+- Coach attachments: `readAttachment()` turns files into images (resized
+  JPEG), PDFs (up to 7 MB) or text (up to 1 MB; `.dek`/`.cod` XML converted by
+  `xmlDeckToText()`). `askCoachOnce()` puts text files in the message and sends
+  images and PDFs as `inlineData` parts. Files go with one question only;
+  saved chats store just `{ name, kind }`.
 - Shared-card warnings: `deckUsage()` / `sharedConflicts()` total copies across
   all decks per card (reprints count together, basic Energy skipped) and
   compare with the Card Library.

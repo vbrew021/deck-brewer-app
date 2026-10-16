@@ -355,6 +355,22 @@ img.sym { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px;
 .lo-bar { width: 28px; background: #A0784E; border-radius: 4px 4px 0 0; min-height: 2px; }
 .lo-p, .lo-k { font-size: 11px; color: var(--muted); }
 .lo-k { font-weight: 600; }
+.attach-row { order: -1; width: 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.file-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 8px; border-radius: var(--r-sm); background: var(--soft); border: 1px solid var(--line); font-size: 12px; word-break: break-all; }
+.file-chip img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; flex: none; }
+.file-icon { flex: none; font-size: 10px; font-weight: 800; padding: 3px 4px; border-radius: 3px; background: var(--btn); color: #fff; }
+.chip-x { border: 0; background: none; font-size: 16px; line-height: 1; cursor: pointer; color: var(--muted); padding: 0 2px; }
+.msg-files { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0 28px; }
+.msg-files .file-chip { background: var(--paper); }
+.attach-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.composer.dragging { outline: 2px dashed var(--trainer); outline-offset: -6px; }
+.read-cards { margin: 6px 0 0 28px; display: flex; flex-direction: column; gap: 6px; }
+.read-group p { margin: 0 0 4px; }
+.read-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.read-card { position: relative; width: 52px; aspect-ratio: 63 / 88; padding: 0; border: 0; border-radius: 4px; overflow: hidden; background: var(--tile-bg); cursor: pointer; }
+.read-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.read-card .noimg { font-size: 8px; color: var(--muted); padding: 2px; }
+.read-count { position: absolute; right: 2px; bottom: 2px; background: #fff; color: #1A2340; font-size: 10px; font-weight: 800; border-radius: 99px; padding: 0 4px; }
 .chat-note { text-align: center; font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
 .thinking { color: var(--muted); font-style: italic; }
 .suggest { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -406,7 +422,7 @@ img.sym { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px;
 import { html, render, useState, useEffect, useMemo, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 import * as cfg from './firebase-config.js';
 
-const VERSION = '1.13.0';
+const VERSION = '1.15.0';
 const firebaseConfig = cfg.firebaseConfig;
 const filled = (v) => typeof v === 'string' && v.trim() !== '' && !v.startsWith('PASTE');
 const FIREBASE_READY = !!(firebaseConfig && filled(firebaseConfig.apiKey));
@@ -1178,7 +1194,12 @@ async function createFirebaseStore(code) {
 const formatName = (f) => (f === 'standard' ? 'Standard' : f === 'expanded' ? 'Expanded' : 'Casual (home games: any cards allowed, including non-tournament cards)');
 const RULES_TEXT = `Deck rules: exactly 60 cards, at most 4 copies of any card by name (basic Energy is unlimited), at least one Basic Pokémon, at most 1 ACE SPEC and 1 Radiant Pokémon.`;
 
-const SHARED_COACH_RULES = `Card pictures (important):
+const SHARED_COACH_RULES = `Card text (important):
+- Each message includes official card text from the card database for the deck, for cards in the Card Library, and for cards read from any attached pictures. Base your decisions on that text: attacks, abilities, HP, energy or mana costs, retreat and rules. Different printings of a card with the same name can do completely different things, so compare the exact printings given.
+- When comparing cards, mention the specific attack, ability or effect that makes the difference.
+- If a card's text isn't given and you aren't sure of it, say so rather than guessing.
+
+Card pictures (important):
 - The app shows every card in "suggestions" as a picture with an Add or Remove button. That is the only way the family sees card pictures, so EVERY specific card you recommend adding or removing must be in "suggestions", even if you also mention it in "reply". Never say you can't show pictures.
 - Write card names in **bold** in "reply".
 
@@ -1263,11 +1284,46 @@ let modelIndex = 0; // which entry in COACH_MODELS is working this session
 const currentCoachModel = () => COACH_MODELS[modelIndex];
 
 const NOTES_LIMIT = 1500;
+// One line of official card text, so the coach compares real attacks, abilities and rules instead of guessing.
+const ENERGY_ABBR = { Grass: 'G', Fire: 'R', Water: 'W', Lightning: 'L', Psychic: 'P', Fighting: 'F', Darkness: 'D', Metal: 'M', Dragon: 'N', Colorless: 'C', Fairy: 'Y' };
+function cardSummary(c) {
+  const where = `${c.name} (${c.setCode} ${c.number})`;
+  const clean = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+  if (isMtg(c)) return `${where}: ${c.manaCost || 'no cost'}, ${c.typeLine}${c.power != null ? `, ${c.power}/${c.toughness}` : c.loyalty != null ? `, loyalty ${c.loyalty}` : ''}. ${clean(c.oracle)}`;
+  const sec = sectionOf(c);
+  if (sec === 'pokemon') {
+    const head = `${where}: ${[...c.subtypes].join(' ')} Pokémon, ${(c.types || []).join('/') || 'no'} type, ${c.hp || '?'} HP${c.evolvesFrom ? `, evolves from ${c.evolvesFrom}` : ''}${c.retreat != null ? `, retreat ${c.retreat}` : ''}`;
+    const ab = (c.abilities || []).map((a) => ` Ability "${a.name}": ${clean(a.text)}`).join('');
+    const at = (c.attacks || []).map((a) => ` Attack "${a.name}" [${(a.cost || []).map((x) => ENERGY_ABBR[x] || x).join('') || 'free'}]${a.damage ? ` ${a.damage}` : ''}${a.text ? `: ${clean(a.text)}` : ''}`).join(';');
+    return `${head}.${ab}${at}`;
+  }
+  return `${where}: ${[...c.subtypes].join(' ')} ${c.supertype}. ${clean((c.rules || []).join(' '))}`;
+}
+// Card text for a set of cards, skipping basic Energy/basic lands, within a size budget.
+function cardTextBlock(cards, budget) {
+  const seen = new Set(), lines = [];
+  let used = 0;
+  for (const c of cards) {
+    if (!c || isBasicEnergy(c) || seen.has(c.id)) continue;
+    seen.add(c.id);
+    const line = `- ${cardSummary(c)}`;
+    if (used + line.length > budget) { lines.push('- (more cards not shown)'); break; }
+    lines.push(line); used += line.length;
+  }
+  return lines.join('\n');
+}
+
 const deckContext = (deck, collection, format, notes = '', otherDecks = '') => {
   const mtg = gameOf(deck) === 'mtg';
   const fmt = mtg ? (format === 'casual' ? 'Casual (any cards allowed)' : formatLabel('mtg', format)) : formatName(format);
   const empty = !deck.entries.length && !(deck.side || []).length;
-  return `Coach notes (${mtg ? 'player' : 'family'} preferences):\n${notes.trim() || '(none yet)'}\n\nOur other decks:\n${otherDecks || '(none)'}\n\nFormat: ${fmt}\n\nCurrent deck ("${deck.name}"):\n${empty ? '(empty)' : exportDeck(deck)}\n\nCards in our Card Library:\n${collectionText(collection) || '(nothing recorded yet)'}`;
+  const deckCards = [...deck.entries, ...(deck.side || [])].map((e) => e.card);
+  const inDeck = new Set(deckCards.map((c) => c.id));
+  // Library cards worth describing: Pokémon (Pokémon) or non-land cards (Magic), not already in the deck.
+  const libCards = Object.values(collection).map((e) => e.card).filter((c) => !inDeck.has(c.id) && (mtg ? mtgSection(c) !== 'land' : sectionOf(c) === 'pokemon'));
+  const deckText = empty ? '' : `\n\nCard text for this deck (official text from the card database):\n${cardTextBlock(deckCards, 14000)}`;
+  const libText = libCards.length ? `\n\nCard text for ${mtg ? 'spells' : 'Pokémon'} in our Card Library that aren't in this deck:\n${cardTextBlock(libCards, 9000)}` : '';
+  return `Coach notes (${mtg ? 'player' : 'family'} preferences):\n${notes.trim() || '(none yet)'}\n\nOur other decks:\n${otherDecks || '(none)'}\n\nFormat: ${fmt}\n\nCurrent deck ("${deck.name}"):\n${empty ? '(empty)' : exportDeck(deck)}\n\nCards in our Card Library:\n${collectionText(collection) || '(nothing recorded yet)'}${deckText}${libText}`;
 };
 
 // One line per other deck, e.g. "Charizard v2 (60 cards; main Pokémon: Charizard ex, Pidgeot ex)".
@@ -1332,8 +1388,8 @@ function photoToJpeg(file, maxSide = 1600) {
     img.src = URL.createObjectURL(file);
   });
 }
-async function scanCardPhoto(file, game = 'pokemon') {
-  const data = await photoToJpeg(file);
+async function scanCardPhoto(file, game = 'pokemon') { return scanImageData(await photoToJpeg(file), game); }
+async function scanImageData(data, game = 'pokemon') {
   const contents = [{ role: 'user', parts: [{ inlineData: { mimeType: 'image/jpeg', data } }, { text: game === 'mtg' ? SCAN_PROMPT_MTG : SCAN_PROMPT }] }];
   let result, lastError = null;
   for (const name of COACH_MODELS) {
@@ -1444,28 +1500,53 @@ function groundingInfo(result) {
 const WEB_HINT = /limitless|mtggoldfish|goldfish|moxfield|mtgtop8|tournament|meta|top deck|decklist|best list|website|online|https?:\/\//i;
 
 // webMode: 'auto' (search only when needed), 'always', or 'off'. forceWeb: a screen that needs current info (Matchups).
-async function askCoach({ history, message, deck, collection, format, notes, otherDecks, webMode = 'auto', forceWeb = false }) {
+// Work out which cards are in attached pictures and look up their official text.
+async function identifyPictureCards(files, game) {
+  const pics = files.filter((f) => f.kind === 'image');
+  const out = [];
+  for (const [i, f] of pics.entries()) {
+    try {
+      const found = await scanImageData(f.data, game);
+      const resolved = found.length ? await resolveLines(found.map((c) => ({ ...c, raw: `${c.count} ${c.name}` })), game) : [];
+      out.push({ picture: i + 1, name: f.name, cards: resolved.filter((r) => r.card).map((r) => ({ card: r.card, count: r.count })), unmatched: resolved.filter((r) => !r.card).map((r) => r.name) });
+    } catch (e) { console.warn('Couldn’t identify cards in', f.name, e); out.push({ picture: i + 1, name: f.name, cards: [], unmatched: [], failed: true }); }
+  }
+  return out;
+}
+function pictureCardsText(groups) {
+  if (!groups.length) return '';
+  return '\n\nCards identified in the attached pictures (official text from the card database; check them against the pictures):\n' + groups.map((g) =>
+    `Picture ${g.picture} ("${g.name}"):\n${g.failed ? '- (couldn’t identify cards in this picture; read it yourself)' : g.cards.length ? g.cards.map((x) => `- ${x.count} × ${cardSummary(x.card)}`).join('\n') : '- (no cards recognized)'}${g.unmatched.length ? `\n- Not found in the card database: ${g.unmatched.join(', ')}` : ''}`).join('\n');
+}
+
+async function askCoach({ history, message, deck, collection, format, notes, otherDecks, webMode = 'auto', forceWeb = false, files = [] }) {
   const startWithWeb = forceWeb || webMode === 'always' || (webMode === 'auto' && WEB_HINT.test(message));
-  const first = await askCoachOnce({ history, message, deck, collection, format, notes, otherDecks, useWeb: startWithWeb });
+  const first = await askCoachOnce({ history, message, deck, collection, format, notes, otherDecks, useWeb: startWithWeb, files });
   // "When needed": the coach answered without the web and said it needs to look something up, so ask again with search.
   if (!startWithWeb && webMode === 'auto' && first.needsWeb) {
     if (WEB_MODELS.every((m) => isOut('web:' + m))) return { ...first, webNote: 'The coach wanted to look this up online, but today’s free web searches are used up, so this is from its own knowledge.' };
     try {
-      const second = await askCoachOnce({ history, message, deck, collection, format, notes, otherDecks, useWeb: true });
+      const second = await askCoachOnce({ history, message, deck, collection, format, notes, otherDecks, useWeb: true, files });
       if (!second.webNote) return { ...second, lookedUp: true };
     } catch (e) { console.warn('Web lookup failed', e); }
     return { ...first, webNote: 'The coach wanted to look this up online, but web search isn’t available right now, so this is from its own knowledge.' };
   }
   return first;
 }
-async function askCoachOnce({ history, message, deck, collection, format, notes, otherDecks, useWeb }) {
+async function askCoachOnce({ history, message, deck, collection, format, notes, otherDecks, useWeb, files = [] }) {
+  // Attached files: text and deck files go into the message; images and PDFs are sent for the coach to look at.
+  const textFiles = files.filter((f) => f.kind === 'text').map((f) => `\n\nAttached file "${f.name}":\n${f.text}`).join('');
+  const others = files.filter((f) => f.kind !== 'text');
+  const fileNote = (files.length ? `\n\n(Attached: ${files.map((f) => f.name).join(', ')}.${others.length ? ' Images and PDFs are included with this message; read them carefully, including any card names, decklists or numbers in them.' : ''})` : '') + (files.pictureText || '');
   const base = [
     ...history.slice(-12).map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-    { role: 'user', parts: [{ text: `${deckContext(deck, collection, format, notes, otherDecks)}\n\n${useWeb ? '(Web search is available for this question.)\n\n' : ''}${message}` }] },
+    { role: 'user', parts: [{ text: `${deckContext(deck, collection, format, notes, otherDecks)}\n\n${useWeb ? '(Web search is available for this question.)\n\n' : ''}${message}${fileNote}${textFiles}` },
+      ...others.map((f) => ({ inlineData: { mimeType: f.mime, data: f.data } }))] },
   ];
   let lastText = '';
   for (let attempt = 0; attempt < 2; attempt++) {
-    const contents = attempt === 0 ? base : [...base.slice(0, -1), { role: 'user', parts: [{ text: base[base.length - 1].parts[0].text + '\n\n(Please keep this answer short: under 150 words, and at most 6 suggestions. Answer with only the JSON object.)' }] }];
+    const last = base[base.length - 1];
+    const contents = attempt === 0 ? base : [...base.slice(0, -1), { role: 'user', parts: [{ text: last.parts[0].text + '\n\n(Please keep this answer short: under 150 words, and at most 6 suggestions. Answer with only the JSON object.)' }, ...last.parts.slice(1)] }];
     let res;
     try { res = await callCoach(contents, useWeb, gameOf(deck)); }
     catch (e) { console.error(e); throw coachError(e); }
@@ -2853,6 +2934,43 @@ function SearchSuggestions({ htmlText }) {
   return html`<div class="search-chips" ref=${ref}></div>`;
 }
 
+/* ---------- Files attached in the coach chat ---------- */
+const ATTACH_ACCEPT = 'image/*,.pdf,.txt,.dek,.dck,.cod,.xml,.csv,.md,.json';
+const MAX_ATTACH = 4;
+const fileToBase64 = (file) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1]); r.onerror = () => reject(new Error(`Couldn’t read ${file.name}.`)); r.readAsDataURL(file); });
+// MTGO (.dek) and Cockatrice (.cod) deck files are XML; turn them into a regular decklist.
+function xmlDeckToText(xml) {
+  try {
+    const doc = new DOMParser().parseFromString(xml, 'text/xml');
+    const cards = [...doc.getElementsByTagName('Cards')];
+    if (cards.length) {
+      const line = (c) => `${c.getAttribute('Quantity')} ${c.getAttribute('Name')}`;
+      const main = cards.filter((c) => c.getAttribute('Sideboard') !== 'true'), side = cards.filter((c) => c.getAttribute('Sideboard') === 'true');
+      return ['Deck', ...main.map(line), ...(side.length ? ['', 'Sideboard', ...side.map(line)] : [])].join('\n');
+    }
+    const zones = [...doc.getElementsByTagName('zone')];
+    if (zones.length) return zones.map((z) => `${/side/i.test(z.getAttribute('name') || '') ? 'Sideboard' : 'Deck'}\n${[...z.getElementsByTagName('card')].map((c) => `${c.getAttribute('number')} ${c.getAttribute('name')}`).join('\n')}`).join('\n\n');
+  } catch {}
+  return null;
+}
+async function readAttachment(file) {
+  const name = file.name || 'Pasted image';
+  if ((file.type || '').startsWith('image/')) {
+    const data = await photoToJpeg(file, 1600);
+    return { kind: 'image', name, mime: 'image/jpeg', data, preview: `data:image/jpeg;base64,${data}` };
+  }
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(name)) {
+    if (file.size > 7e6) throw new Error(`${name} is too big. PDFs can be up to 7 MB.`);
+    return { kind: 'pdf', name, mime: 'application/pdf', data: await fileToBase64(file) };
+  }
+  if (file.size > 1e6) throw new Error(`${name} is too big. Text and deck files can be up to 1 MB.`);
+  let text = await file.text();
+  if (/\.(dek|cod|xml)$/i.test(name) || /^\s*<\?xml|<Deck[\s>]|<cockatrice_deck/i.test(text)) text = xmlDeckToText(text) || text;
+  return { kind: 'text', name, text: text.slice(0, 40000) };
+}
+// Does a text attachment look like a decklist we can import?
+const looksLikeDecklist = (text, game) => (game === 'mtg' ? parseMtgDecklist(text) : parseDecklist(text)).length >= 3;
+
 const CHAT_LIMIT = 40;
 const deckCountOf = (deck, card) => deck.entries.filter((e) => e.card.id === card.id || e.card.name === card.name).reduce((n, e) => n + e.count, 0);
 // Add a note as a new "- " line, keeping the notes within the length limit.
@@ -2860,7 +2978,20 @@ function addNote(notes, note) {
   const line = `- ${note.replace(/^[-•]\s*/, '').trim()}`;
   return [notes.trim(), line].filter(Boolean).join('\n').slice(-NOTES_LIMIT);
 }
-function AssistantPanel({ deck, collection, format, store, notes, otherDecks, onAdd, onRemove, onOpen, onOwned, wants = {}, prompt, onAddSide }) {
+function AssistantPanel({ deck, collection, format, store, notes, otherDecks, onAdd, onRemove, onOpen, onOwned, wants = {}, prompt, onAddSide, onImportList }) {
+  const [status, setStatus] = useState('Thinking it over…');
+  const [files, setFiles] = useState([]);
+  const [fileError, setFileError] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const fileRef = useRef(null);
+  async function attach(list) {
+    setFileError('');
+    for (const f of [...list]) {
+      if (files.length >= MAX_ATTACH) { setFileError(`Up to ${MAX_ATTACH} files at a time.`); break; }
+      try { const a = await readAttachment(f); setFiles((x) => (x.length >= MAX_ATTACH ? x : [...x, a])); }
+      catch (e) { setFileError(e.message); }
+    }
+  }
   const mtgDeck = gameOf(deck) === 'mtg';
   const panelRef = useRef(null);
   const [webMode, setWebMode] = usePref('db.webMode', 'auto');
@@ -2877,7 +3008,13 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
   // Update the chat and save it (keeps the most recent messages).
   const setMessages = (fn) => setMessagesRaw((prev) => {
     const next = (typeof fn === 'function' ? fn(prev) : fn).slice(-CHAT_LIMIT);
-    store.saveChat(deck.id, next).catch(() => {});
+    // Saved chats keep only the names of attached files, not their contents.
+    store.saveChat(deck.id, next.map((m) => {
+      let x = m.files ? { ...m, files: m.files.map(({ name, kind }) => ({ name, kind })) } : m;
+      if (m.readCards) x = { ...x, readCards: m.readCards.map((g) => ({ picture: g.picture, name: g.name, failed: !!g.failed, unmatched: g.unmatched || [],
+        names: g.names || (g.cards || []).map((c) => `${c.count} × ${c.card.name} (${c.card.setCode} ${c.card.number})`) })) };
+      return x;
+    })).catch(() => {});
     return next;
   });
   // Keep the newest message in view, scrolling only the chat (not the page).
@@ -2896,11 +3033,26 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
     if (COACH_READY && !busy) send(prompt.text, prompt.web); else setInput(prompt.text);
   }, [prompt]);
   async function send(text, webOverride) {
-    if (!text.trim() || busy || !COACH_READY) return;
-    const history = messages.map((m) => ({ role: m.role, content: m.role === 'assistant' ? m.text + suggestionOutcomes(m) : m.text }));
-    setMessagesRaw((m) => [...m, { role: 'user', text }]); setInput(''); setBusy(true); setError(null);
+    const sending = files;
+    if ((!text.trim() && !sending.length) || busy || !COACH_READY) return;
+    if (!text.trim()) text = sending.length === 1 ? 'Please take a look at the attached file.' : 'Please take a look at the attached files.';
+    const picNames = (m) => (m.readCards || []).map((g) => `${g.name}: ${(g.names || (g.cards || []).map((c) => `${c.count} × ${c.card.name} (${c.card.setCode} ${c.card.number})`)).join(', ') || 'none recognized'}`).join('; ');
+    const history = messages.map((m) => ({ role: m.role, content: m.role === 'assistant' ? m.text + suggestionOutcomes(m)
+      : m.text + (m.files?.length ? ` [Attached earlier: ${m.files.map((f) => f.name).join(', ')}]` : '') + (m.readCards?.length ? ` [Cards read from those pictures: ${picNames(m)}]` : '') }));
+    setMessagesRaw((m) => [...m, { role: 'user', text, ...(sending.length ? { files: sending.map(({ name, kind, text: t, preview }) => ({ name, kind, text: t, preview })) } : {}) }]);
+    setInput(''); setFiles([]); setFileError(''); setBusy(true); setError(null); setStatus('Thinking it over…');
     try {
-      const d = await askCoach({ history, message: text, deck, collection, format, notes, otherDecks, webMode, forceWeb: webOverride === true });
+      // Pictures: identify the cards first and show them, so the coach works from official card text.
+      let picGroups = [];
+      if (sending.some((f) => f.kind === 'image')) {
+        setStatus('Reading the cards in your pictures…');
+        picGroups = await identifyPictureCards(sending, gameOf(deck));
+        const shown = picGroups.map((g) => ({ picture: g.picture, name: g.name, cards: g.cards.slice(0, 20), unmatched: g.unmatched, failed: !!g.failed }));
+        setMessagesRaw((m) => m.map((x, i) => (i === m.length - 1 ? { ...x, readCards: shown } : x)));
+        setStatus('Thinking it over…');
+      }
+      const filesWithText = Object.assign([...sending], { pictureText: pictureCardsText(picGroups) });
+      const d = await askCoach({ history, message: text, deck, collection, format, notes, otherDecks, webMode, forceWeb: webOverride === true, files: filesWithText });
       let suggestions = d.suggestions;
       if (suggestions.length) {
         let res = [];
@@ -2912,7 +3064,7 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
       const remember = d.remember && !notes.toLowerCase().includes(d.remember.toLowerCase()) ? d.remember.slice(0, 200) : '';
       setMessages((m) => [...m, { role: 'assistant', text: d.reply, suggestions, remember, rememberState: remember ? 'ask' : '', lookedUp: !!d.lookedUp,
         searchHtml: d.searchHtml || '', sources: d.sources || [], webNote: d.webNote || '' }]);
-    } catch (e) { setError({ text: e.message, detail: e.detail || '' }); setMessagesRaw((m) => m.slice(0, -1)); setInput(text); }
+    } catch (e) { setError({ text: e.message, detail: e.detail || '' }); setMessagesRaw((m) => m.slice(0, -1)); setInput(text); setFiles(sending); }
     finally { setBusy(false); }
   }
   const updateSugg = (mi, si, patch) =>
@@ -2949,6 +3101,17 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
       </div>`}
       ${messages.map((m, mi) => html`<div class=${`msg ${m.role === 'user' ? 'msg-user' : 'msg-coach'}`}>
         ${m.role === 'user' ? html`<p>${m.text}</p>` : richText(m.text)}
+        ${m.readCards?.length > 0 && html`<div class="read-cards">${m.readCards.map((g) => html`<div class="read-group">
+          <p class="small muted">${g.failed ? `Couldn’t identify the cards in ${g.name}; the coach looked at the picture itself.` : `Cards read from ${g.name}${(g.cards || g.names || []).length ? (g.cards ? ' (tap to check):' : ':') : ': none recognized.'}`}</p>
+          ${!g.cards && g.names?.length > 0 && html`<p class="small">${g.names.join(', ')}</p>`}
+          ${g.cards?.length > 0 && html`<div class="read-row">${g.cards.map((x) => html`<button class="read-card" onClick=${() => onOpen(x.card)} title=${`${x.card.name} (${x.card.setCode} ${x.card.number})`}>
+            <${CardImage} card=${x.card} />${x.count > 1 ? html`<span class="read-count">${x.count}</span>` : ''}</button>`)}</div>`}
+          ${g.unmatched?.length > 0 && html`<p class="small warn">Not found: ${g.unmatched.join(', ')}</p>`}
+        </div>`)}</div>`}
+        ${m.files?.length > 0 && html`<div class="msg-files">${m.files.map((f) => html`<span class="file-chip">
+          ${f.preview ? html`<img src=${f.preview} alt="" />` : html`<span class="file-icon" aria-hidden="true">${f.kind === 'pdf' ? 'PDF' : 'TXT'}</span>`}${f.name}
+          ${f.kind === 'text' && f.text && onImportList && looksLikeDecklist(f.text, gameOf(deck)) && html` <button class="linkbtn small" onClick=${() => onImportList(f.text, f.name)}>Import into this deck</button>`}
+        </span>`)}</div>`}
         ${m.sources?.length > 0 && html`<div class="sources"><span class="small muted">Sources:</span>
           ${m.sources.map((src) => html`<a href=${src.uri} target="_blank" rel="noopener">${src.title}</a>`)}</div>`}
         ${m.searchHtml && html`<${SearchSuggestions} htmlText=${m.searchHtml} />`}
@@ -2976,13 +3139,21 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
           <div class="row"><button class="mini" onClick=${() => rememberNote(mi, true)}>Save to coach notes</button><button class="mini ghost" onClick=${() => rememberNote(mi, false)}>No thanks</button></div></div>`}
         ${m.rememberState === 'saved' && html`<p class="small muted">Saved to coach notes.</p>`}
       </div>`)}
-      ${busy && html`<div class="msg msg-coach thinking">Thinking it over…</div>`}
+      ${busy && html`<div class="msg msg-coach thinking">${status}</div>`}
       ${error && html`<div class="warn small"><p style="margin:0">${error.text || error}</p>
         ${error.detail && html`<details class="err-detail"><summary>Details</summary><code>${error.detail}</code>
           <button class="linkbtn small" onClick=${() => navigator.clipboard?.writeText(error.detail)}>Copy details</button></details>`}</div>`}
     </div>
-    <form class="composer" onSubmit=${(e) => { e.preventDefault(); send(input); }}>
-      <textarea rows="3" value=${input} placeholder=${COACH_READY ? (mtgDeck ? 'Ask, or paste a list from MTGGoldfish…' : 'Ask, or paste a list from Limitless…') : 'Type a question for Claude…'} aria-label="Message the deck coach"
+    <form class=${`composer ${dragging ? 'dragging' : ''}`} onSubmit=${(e) => { e.preventDefault(); send(input); }}
+      onDragOver=${(e) => { if (COACH_READY && e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); setDragging(true); } }}
+      onDragLeave=${() => setDragging(false)}
+      onDrop=${(e) => { if (!COACH_READY) return; e.preventDefault(); setDragging(false); if (e.dataTransfer.files?.length) attach(e.dataTransfer.files); }}>
+      ${(files.length > 0 || fileError) && html`<div class="attach-row">
+        ${files.map((f, i) => html`<span class="file-chip">${f.preview ? html`<img src=${f.preview} alt="" />` : html`<span class="file-icon" aria-hidden="true">${f.kind === 'pdf' ? 'PDF' : 'TXT'}</span>`}${f.name}
+          <button type="button" class="chip-x" aria-label=${`Remove ${f.name}`} onClick=${() => setFiles((x) => x.filter((_, j) => j !== i))}>×</button></span>`)}
+        ${fileError && html`<span class="small warn">${fileError}</span>`}
+      </div>`}
+      <textarea rows="3" value=${input} onPaste=${(e) => { const fl = e.clipboardData?.files; if (COACH_READY && fl?.length) { e.preventDefault(); attach(fl); } }} placeholder=${COACH_READY ? (mtgDeck ? 'Ask, or paste a list from MTGGoldfish…' : 'Ask, or paste a list from Limitless…') : 'Type a question for Claude…'} aria-label="Message the deck coach"
         onInput=${(e) => setInput(e.target.value)}
         onKeyDown=${(e) => { if (COACH_READY && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}></textarea>
       <label class="webtoggle" title="Lets the coach look up decklists on Limitless and other sites">Web search:
@@ -2990,13 +3161,17 @@ function AssistantPanel({ deck, collection, format, store, notes, otherDecks, on
           <option value="auto">When needed</option><option value="always">Always</option><option value="off">Off</option>
         </select></label>
       <div class="composer-actions">
-        ${COACH_READY && html`<button class="btn" disabled=${busy || !input.trim()}>Send</button>`}
+        ${COACH_READY && html`<button class="btn" disabled=${busy || (!input.trim() && !files.length)}>Send</button>`}
+        ${COACH_READY && html`<button type="button" class="btn ghost attach-btn" onClick=${() => fileRef.current.click()} title="Attach an image, PDF or deck file (you can also drag a file here or paste a screenshot)">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/></svg> Attach</button>
+          <input ref=${fileRef} type="file" accept=${ATTACH_ACCEPT} multiple hidden onChange=${(e) => { attach(e.target.files); e.target.value = ''; }} />`}
         <button type="button" class="btn ghost" onClick=${copyForClaude}>${copied ? 'Copied' : 'Copy for Claude'}</button>
       </div>
     </form>
     <p class="claude-hint small muted">${copied
       ? html`Now paste it into a chat at <a href="https://claude.ai/new" target="_blank" rel="noopener">claude.ai</a>. When Claude gives you a decklist, paste it into Import list.`
-      : 'Copy for Claude copies this deck, your cards and your question so you can ask Claude in its own app.'}</p>
+      : 'Copy for Claude copies this deck, your cards and your question so you can ask Claude in its own app.'}
+      ${files.length > 0 && ' Copy for Claude can’t include attached files; attach them in Claude yourself.'}</p>
   </aside>`;
 }
 
@@ -3276,7 +3451,17 @@ function App() {
         notes=${notes} otherDecks=${describeDecks(decks, deck.id)}
         onOwned=${(card, count) => store.setOwned(card, Math.max(ownedExact(card), count))} wants=${wants}
         store=${store} onAdd=${addToDeck} onRemove=${removeFromDeck} onOpen=${setModalCard}
-        onAddSide=${(card, n = 1) => setSideCount(card, sideCountOf(card) + n)} />
+        onAddSide=${(card, n = 1) => setSideCount(card, sideCountOf(card) + n)}
+        onImportList=${async (text, name) => {
+          if (!confirm(`Replace “${deck.name}” with the list in ${name}?`)) return;
+          try {
+            const lines = game === 'mtg' ? parseMtgDecklist(text) : parseDecklist(text);
+            const res = await resolveLines(lines, game);
+            const ok = res.filter((r) => r.card), missed = res.filter((r) => !r.card);
+            await importToDeck(ok.map((r) => ({ card: r.card, count: r.count, board: r.board })), 'replace');
+            if (missed.length) alert(`Imported ${ok.length} lines. Couldn’t find: ${missed.map((r) => r.raw).join('; ')}`);
+          } catch (e) { alert(e.message || 'Import failed.'); }
+        }} />
     </div>
 
     <p class="foot">Version ${VERSION}. ${store.mode === 'firebase' ? 'Shared with Firebase.' : 'Saved on this device only.'}</p>

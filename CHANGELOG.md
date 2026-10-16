@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.15.0 (October 10, 2026)
+- Changed: the coach now gets official card text with every question, not
+  just card names: HP, type, stage, evolves from, abilities, attacks (cost,
+  damage and effect) and retreat for Pokémon; mana cost, type, rules text and
+  power/toughness for Magic. This covers the current deck and the Pokémon
+  (or Magic spells) in your Card Library, so it can compare the exact
+  printings you have.
+- Added: when you attach pictures, the app first identifies the cards in each
+  picture, looks up their official text, and sends it to the coach labeled
+  by picture. The cards it read appear under your message (tap one to check
+  it), with any it couldn't find listed. Each picture uses one extra free
+  request for this.
+- Follow-up questions remember which cards were in earlier pictures.
+- No Firebase changes needed.
+
+## 1.14.0 (October 10, 2026)
+- Added: attach files in the coach chat with the Attach button, by dragging a
+  file onto the chat box, or by pasting a screenshot. Up to 4 per message.
+  - Images and PDFs are sent for the coach to read (screenshots of decklists,
+    photos of cards or a game, tournament lists).
+  - Text and deck files (.txt, .csv, .md, .json, and MTGO .dek and
+    Cockatrice .cod deck files, which are converted to a regular decklist).
+  - Deck files get an "Import into this deck" button.
+- Saved chats keep only the names of attached files, not their contents.
+- No Firebase changes needed.
+
 ## 1.13.0 (October 10, 2026)
 - Added for Magic: Test draw with the London mulligan (choose the cards to put
   on the bottom), on the play or on the draw, drawing turn by turn. The odds
