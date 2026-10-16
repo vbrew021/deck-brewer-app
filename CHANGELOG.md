@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.16.1 (October 10, 2026)
+- Added: each coach answer shows which model wrote it (Flash, the stronger
+  model, or Flash-Lite, the lighter one).
+- Added: "Try again" on the latest answer re-asks the same question with the
+  same attached pictures, replacing the old answer. "Try again with the
+  stronger model" appears when Flash-Lite answered.
+- Fixed: leaving the page while the coach was answering lost the question.
+  Questions are now saved right away, the browser warns before leaving
+  mid-answer, and an unanswered question shows an "Ask again" button.
+- Fixed: the coach could offer the same coach note again in different words.
+  Notes that mostly repeat an existing one are no longer offered.
+- No Firebase changes needed.
+
+## 1.16.0 (October 10, 2026)
+- Better picture reading (Scan cards and pictures in the coach chat): uses
+  Google's stronger Flash models first (about 20 free requests a day each,
+  then Flash-Lite as a backup), sharper images (2048 pixels), and a more
+  careful prompt that counts cards by position and reads full names, HP, set
+  code and number. Cards it can't read are reported by position instead of
+  being skipped.
+- Better answers for picture questions: the stronger model answers them,
+  answers can be longer (up to about 500 words, with headings), and the coach
+  is told whether each card in the pictures is already in the deck, in your
+  Card Library, or not owned. It gives each candidate a verdict (Add, Maybe
+  or Skip), what it would replace and the attack or ability that decides it,
+  then lists the changes as suggestion cards.
+- Coach replies can now include headings.
+- No Firebase changes needed.
+
+## 1.15.1 (October 10, 2026)
+- Fixed: Scan cards only opened the camera on phones. It now has two buttons:
+  Take a photo (camera) and Choose photos (your photo library, several at
+  once). Cards found in more than one photo are combined in the review list.
+- No Firebase changes needed.
+
 ## 1.15.0 (October 10, 2026)
 - Changed: the coach now gets official card text with every question, not
   just card names: HP, type, stage, evolves from, abilities, attacks (cost,

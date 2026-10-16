@@ -92,6 +92,10 @@ an AI coach to find substitutes and understand the deck.
   per card; `deckContext()` adds it for the deck (about 14,000 characters at
   most) and for library Pokémon or Magic spells not in the deck (about 9,000).
   `SHARED_COACH_RULES` tells the coach to base decisions on that text.
+- Picture work uses `modelsFor(true)`: `STRONG_MODELS` (regular Flash, about
+  20 free a day each) before the Flash-Lite models. Plain questions use
+  Flash-Lite only. Scan prompts list cards by position and return "unknown"
+  for unreadable cards, which are reported to the user and the coach.
 - Pictures in the chat: `identifyPictureCards()` runs the scan prompt on each
   image (`scanImageData()`), resolves the cards, and `pictureCardsText()` adds
   their official text by picture. The user message shows `readCards`; saved
